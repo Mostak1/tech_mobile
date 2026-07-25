@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunk=self.webpackChunk||[]).push([[215],{21983:(e,s,t)=>{t.r(s),t.d(s,{default:()=>n});const u={name:"AssetsLayout"};const n=(0,t(51900).Z)(u,function(){var e=this._self._c;return e("div",[e("router-view")],1)},[],!1,null,null,null).exports}}]);
