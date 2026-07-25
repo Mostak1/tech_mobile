@@ -1,1 +1,0 @@
-"use strict";(self.webpackChunk=self.webpackChunk||[]).push([[3909],{58340:(e,n,l)=>{l.r(n),l.d(n,{default:()=>u});const s={name:"KnowledgeBaseWrapper"};const u=(0,l(51900).Z)(s,function(){return(0,this._self._c)("router-view")},[],!1,null,null,null).exports}}]);

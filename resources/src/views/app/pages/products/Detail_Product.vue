@@ -675,16 +675,16 @@
           hide-footer
           centered
           size="lg"
-          header-bg-variant="dark"
+          :header-bg-variant="isDarkMode ? 'dark' : 'primary'"
           header-text-variant="light"
           body-class="p-0"
         >
           <div :style="timelineContainerStyle">
-            <div v-if="serialHistoryLoading" class="text-center p-5">
+            <div v-if="serialHistoryLoading" class="text-center p-5" :style="{ color: pdTheme.valueColor }">
               <div class="spinner spinner-primary d-inline-block mr-2"></div>
               Loading timeline history...
             </div>
-            <div v-else-if="!serialHistory.length" class="text-center p-5 text-muted italic">
+            <div v-else-if="!serialHistory.length" class="text-center p-5 italic" :style="{ color: pdTheme.mutedColor }">
               No history records found for this serial number.
             </div>
             <div v-else class="timeline-wrapper p-4">
@@ -697,20 +697,20 @@
                 </div>
                 <div class="timeline-content pb-4 flex-grow-1">
                   <div class="d-flex justify-content-between align-items-baseline">
-                    <h6 class="timeline-title m-0" style="font-weight: 700; text-transform: uppercase;">{{ item.type }}</h6>
-                    <span class="timeline-date text-muted" style="font-size: 11px;">{{ item.created_at }}</span>
+                    <h6 class="timeline-title m-0" :style="{ fontWeight: '700', textTransform: 'uppercase', color: pdTheme.cardHeaderText, fontSize: '14px' }">{{ item.type }}</h6>
+                    <span class="timeline-date" :style="{ fontSize: '12px', color: pdTheme.keyColor, fontWeight: '500' }">{{ item.created_at }}</span>
                   </div>
-                  <p class="timeline-notes m-1 text-muted" style="font-size: 13px;">{{ item.notes }}</p>
-                  <div class="timeline-meta" style="font-size: 11px; color: #888;">
-                    <span v-if="item.from_location">From Location: <strong>{{ item.from_location }}</strong> &nbsp;|&nbsp; </span>
-                    <span v-if="item.to_location">To Location: <strong>{{ item.to_location }}</strong> &nbsp;|&nbsp; </span>
-                    <span v-if="item.customer">Customer: <strong>{{ item.customer }}</strong>
-                      <span v-if="item.customer_phone" style="color: #10b981; margin-left: 4px;">
+                  <p v-if="item.notes" class="timeline-notes my-2" :style="{ fontSize: '13px', color: pdTheme.valueColor, fontWeight: '500', lineHeight: '1.5' }">{{ item.notes }}</p>
+                  <div class="timeline-meta mt-1" :style="{ fontSize: '12px', color: pdTheme.keyColor, lineHeight: '1.6' }">
+                    <span v-if="item.from_location">From Location: <strong :style="{ color: pdTheme.valueColor, fontWeight: '700' }">{{ item.from_location }}</strong> &nbsp;|&nbsp; </span>
+                    <span v-if="item.to_location">To Location: <strong :style="{ color: pdTheme.valueColor, fontWeight: '700' }">{{ item.to_location }}</strong> &nbsp;|&nbsp; </span>
+                    <span v-if="item.customer">Customer: <strong :style="{ color: pdTheme.valueColor, fontWeight: '700' }">{{ item.customer }}</strong>
+                      <span v-if="item.customer_phone" style="color: #10b981; margin-left: 4px; font-weight: 600;">
                         <lucide-icon name="phone" style="width:11px;height:11px;vertical-align:middle;margin-right:2px;" />{{ item.customer_phone }}
                       </span>
                       &nbsp;|&nbsp;
                     </span>
-                    <span v-if="item.created_by">Logged By: <strong>{{ item.created_by }}</strong></span>
+                    <span v-if="item.created_by">Logged By: <strong :style="{ color: pdTheme.valueColor, fontWeight: '700' }">{{ item.created_by }}</strong></span>
                   </div>
                 </div>
               </div>

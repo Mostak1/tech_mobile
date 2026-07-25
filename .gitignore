@@ -2,6 +2,7 @@
 
 /public/images/vendor
 /public/js/main.js
+/public/js/bundle/
 /node_modules
 /public/hot
 /public/storage
