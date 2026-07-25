@@ -4832,6 +4832,10 @@ export default {
       if (this.pos_settings.barcode_scanning_sound) {
         this.audio.play();
       }
+
+      const matchedSerial = this.product.pending_matched_serial || null;
+      delete this.product.pending_matched_serial;
+
       // 1) If product already exists in the list (ignore price_type), merge and just increase quantity
       const hasProductIds = this.product.product_id !== undefined && this.product.product_id !== null;
       const targetVariantId = (this.product.product_variant_id === undefined || this.product.product_variant_id === null)
@@ -4851,22 +4855,40 @@ export default {
       if (existingIndex !== -1) {
         const row = this.details[existingIndex];
         const addQty = (typeof this.product.quantity === 'number' && this.product.quantity > 0) ? this.product.quantity : 1;
-        if (row.product_type !== 'is_service') {
-          const desiredQty = row.quantity + addQty;
-          // Stock guard skipped when overselling is allowed: cart can grow past available stock.
-          if (!this.isOversellingAllowed && desiredQty > row.current) {
-            this.makeToast("warning", this.$t("LowStock"), this.$t("Warning"));
-            row.quantity = row.current;
+
+        if (matchedSerial) {
+          if (row.enable_serial_tracking) {
+            if (!Array.isArray(row.serial_numbers)) this.$set(row, 'serial_numbers', []);
+            if (!row.serial_numbers.includes(matchedSerial)) {
+              row.serial_numbers.push(matchedSerial);
+            }
+            row.imei_number = row.serial_numbers.join(', ');
+            row.quantity = row.serial_numbers.length;
           } else {
-            row.quantity = desiredQty;
+            if (!row.imei_number) {
+              row.imei_number = matchedSerial;
+            } else if (!row.imei_number.includes(matchedSerial)) {
+              row.imei_number = row.imei_number + ', ' + matchedSerial;
+            }
+            row.quantity = row.quantity + addQty;
           }
         } else {
-          row.quantity = row.quantity + addQty;
+          if (row.product_type !== 'is_service') {
+            const desiredQty = row.quantity + addQty;
+            if (!this.isOversellingAllowed && desiredQty > row.current) {
+              this.makeToast("warning", this.$t("LowStock"), this.$t("Warning"));
+              row.quantity = row.current;
+            } else {
+              row.quantity = desiredQty;
+            }
+          } else {
+            row.quantity = row.quantity + addQty;
+          }
         }
         this.CalculTotal();
         this.$forceUpdate();
         setTimeout(() => { this.load_product = true; }, 300);
-        if (row.is_imei) {
+        if (row.is_imei && !matchedSerial) {
           this.Modal_Updat_Detail(row);
         }
         return;
@@ -4892,8 +4914,15 @@ export default {
       // push a cloned object to avoid accidental reference sharing
       const newItem = JSON.parse(JSON.stringify(this.product));
       if (!newItem.price_type) newItem.price_type = 'retail';
-      // ensure reactivity for newly-added prop on some browsers
       this.$set(newItem, 'price_type', newItem.price_type || 'retail');
+
+      if (matchedSerial) {
+        newItem.imei_number = matchedSerial;
+        if (newItem.enable_serial_tracking) {
+          newItem.serial_numbers = [matchedSerial];
+          newItem.quantity = 1;
+        }
+      }
       // Apply min_price on add: ensure Net_price >= min_price by adjusting Unit_price if required
       try {
         const min = Number(newItem.min_price || 0);
@@ -5415,30 +5444,52 @@ export default {
             this.product_filter = [];
           }
           
-          const product_filter = this.products_pos.filter(product =>
-            (product.product_type === 'is_service' || this.isOversellingAllowed || Number(product.qte_sale || 0) > 0) &&
-            (product.code === this.search_input || String(product.barcode || '').includes(this.search_input))
-          );
+          const term = this.search_input.trim().toLowerCase();
+          let matchedSerial = null;
+
+          const product_filter = this.products_pos.filter(product => {
+            if (product.product_type !== 'is_service' && !this.isOversellingAllowed && Number(product.qte_sale || 0) <= 0) return false;
+            const codeMatch = String(product.code || '').toLowerCase() === term;
+            const barcodeMatch = String(product.barcode || '').toLowerCase().includes(term);
+            let serialMatch = false;
+            if (Array.isArray(product.serials)) {
+              serialMatch = product.serials.some(s => {
+                if (String(s).trim().toLowerCase() === term) {
+                  matchedSerial = String(s).trim();
+                  return true;
+                }
+                return false;
+              });
+            }
+            return codeMatch || barcodeMatch || serialMatch;
+          });
+
           if(product_filter.length === 1){
             // Play sound only if barcode scanning sound is enabled
             if (this.pos_settings.barcode_scanning_sound) {
               this.audio.play();
             }
-            this.Check_Product_Exist(product_filter[0], product_filter[0].id, weight = null);
-          }else {
-            this.product_filter = this.products_pos.filter(product => {
-              // Hide out-of-stock products from search results unless overselling is allowed.
-              if (!this.isOversellingAllowed && product.product_type !== 'is_service' && Number(product.qte_sale || 0) <= 0) return false;
-              const name = String(product.name || '').toLowerCase();
-              const code = String(product.code || '').toLowerCase();
-              const barcodeStr = String(product.barcode || '').toLowerCase();
-              const term = this.search_input.toLowerCase();
-              return (
-                name.includes(term) ||
-                code.includes(term) ||
-                barcodeStr.includes(term)
-              );
-            });
+            this.Check_Product_Exist(product_filter[0], product_filter[0].id, weight = null, matchedSerial);
+          } else if (product_filter.length === 0 && term.length >= 2) {
+            axios.get('products/serials/search', { params: { search: this.search_input.trim(), warehouse_id: this.sale.warehouse_id } })
+              .then(res => {
+                if (res.data && res.data.success && res.data.product_id) {
+                  const targetId = res.data.product_id;
+                  const targetVariant = res.data.variant_id;
+                  const found = this.products_pos.find(p => p.id === targetId && (targetVariant ? p.product_variant_id === targetVariant : true));
+                  if (found) {
+                    if (this.pos_settings.barcode_scanning_sound) { this.audio.play(); }
+                    this.Check_Product_Exist(found, found.id, null, res.data.serial_no || this.search_input.trim());
+                    return;
+                  }
+                }
+                this.filterDropdownProducts(term);
+              })
+              .catch(() => {
+                this.filterDropdownProducts(term);
+              });
+          } else {
+            this.filterDropdownProducts(term);
           }
         }, 800);
       } else {
@@ -5450,12 +5501,31 @@ export default {
       }
     },
 
-    Check_Product_Exist(product, id, weight = null) {
+    filterDropdownProducts(term) {
+      this.product_filter = this.products_pos.filter(product => {
+        if (!this.isOversellingAllowed && product.product_type !== 'is_service' && Number(product.qte_sale || 0) <= 0) return false;
+        const name = String(product.name || '').toLowerCase();
+        const code = String(product.code || '').toLowerCase();
+        const barcodeStr = String(product.barcode || '').toLowerCase();
+        const serialsMatch = Array.isArray(product.serials) && product.serials.some(s => String(s).toLowerCase().includes(term));
+        return (
+          name.includes(term) ||
+          code.includes(term) ||
+          barcodeStr.includes(term) ||
+          serialsMatch
+        );
+      });
+    },
+
+    Check_Product_Exist(product, id, weight = null, matchedSerial = null) {
       if(this.load_product){
         this.load_product = false;
         NProgress.start();
         NProgress.set(0.1);
         this.product = {};
+        if (matchedSerial) {
+          this.product.pending_matched_serial = matchedSerial;
+        }
 
         if( product.product_type == 'is_service'){
           this.product.quantity = 1;

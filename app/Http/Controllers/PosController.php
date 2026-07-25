@@ -17,6 +17,7 @@ use App\Models\PaymentWithCreditCard;
 use App\Models\PosSetting;
 use App\Models\Product;
 use App\Models\product_warehouse;
+use App\Models\ProductSerialNumber;
 use App\Models\ProductVariant;
 use App\Models\Role;
 use App\Models\Sale;
@@ -1603,6 +1604,17 @@ class PosController extends BaseController
 
         $product_warehouse_data = $product_warehouse_query->get();
 
+        $availableSerials = ProductSerialNumber::where('current_location_id', $request->warehouse_id)
+            ->where('status', 'available')
+            ->whereNull('service_job_id')
+            ->get(['product_id', 'variation_id', 'serial_no']);
+
+        $serialsGrouped = [];
+        foreach ($availableSerials as $s) {
+            $key = $s->product_id . '_' . ($s->variation_id ?? 0);
+            $serialsGrouped[$key][] = $s->serial_no;
+        }
+
         foreach ($product_warehouse_data as $product_warehouse) {
             if ($product_warehouse->product_variant_id) {
                 $productsVariants = ProductVariant::where('product_id', $product_warehouse->product_id)
@@ -1632,6 +1644,9 @@ class PosController extends BaseController
             $item['id'] = $product_warehouse->product_id;
             $firstimage = explode(',', $product_warehouse['product']->image);
             $item['image'] = $firstimage[0];
+
+            $sKey = $product_warehouse->product_id . '_' . ($product_warehouse->product_variant_id ?? 0);
+            $item['serials'] = $serialsGrouped[$sKey] ?? [];
 
             // Common product flags & meta
             $item['product_type'] = $product_warehouse['product']->type;

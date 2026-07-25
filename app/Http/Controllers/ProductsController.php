@@ -1809,6 +1809,17 @@ class ProductsController extends BaseController
                     });
             })->get();
 
+        $availableSerials = ProductSerialNumber::where('current_location_id', $id)
+            ->where('status', 'available')
+            ->whereNull('service_job_id')
+            ->get(['product_id', 'variation_id', 'serial_no']);
+
+        $serialsGrouped = [];
+        foreach ($availableSerials as $s) {
+            $key = $s->product_id . '_' . ($s->variation_id ?? 0);
+            $serialsGrouped[$key][] = $s->serial_no;
+        }
+
         foreach ($product_warehouse_data as $product_warehouse) {
 
             if ($product_warehouse->product_variant_id) {
@@ -1832,6 +1843,8 @@ class ProductsController extends BaseController
             }
 
             $item['id'] = $product_warehouse->product_id;
+            $sKey = $product_warehouse->product_id . '_' . ($product_warehouse->product_variant_id ?? 0);
+            $item['serials'] = $serialsGrouped[$sKey] ?? [];
             $item['product_type'] = $product_warehouse['product']->type;
             $item['Type_barcode'] = $product_warehouse['product']->Type_barcode;
             $firstimage = explode(',', $product_warehouse['product']->image);
@@ -2079,14 +2092,32 @@ class ProductsController extends BaseController
     {
         $this->authorizeForUser($request->user('api'), 'view', Product::class);
 
-        $search = $request->get('search');
+        $search = trim((string) $request->get('search'));
         if (empty($search)) {
             return response()->json(['success' => false, 'message' => 'Search query is required'], 400);
         }
 
-        $serial = ProductSerialNumber::where('serial_no', $search)->first();
-        if (!$serial) {
-            $serial = ProductSerialNumber::where('serial_no', 'like', '%'.$search.'%')->first();
+        $warehouseId = $request->get('warehouse_id');
+
+        $query = ProductSerialNumber::where('serial_no', $search);
+        if ($warehouseId) {
+            $query->where('current_location_id', $warehouseId)
+                  ->where('status', 'available');
+        }
+
+        $serial = $query->first();
+
+        if (!$serial && strlen($search) >= 3) {
+            $likeQuery = ProductSerialNumber::where('serial_no', 'like', '%'.$search.'%');
+            if ($warehouseId) {
+                $likeQuery->where('current_location_id', $warehouseId)
+                          ->where('status', 'available');
+            }
+            $serial = $likeQuery->first();
+        }
+
+        if (!$serial && $warehouseId) {
+            $serial = ProductSerialNumber::where('serial_no', $search)->first();
         }
 
         if (!$serial) {
@@ -2096,6 +2127,8 @@ class ProductsController extends BaseController
         return response()->json([
             'success' => true,
             'product_id' => $serial->product_id,
+            'variant_id' => $serial->variation_id,
+            'serial_no' => $serial->serial_no,
             'serial_id' => $serial->id,
         ]);
     }

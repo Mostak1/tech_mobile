@@ -950,25 +950,47 @@ export default {
           //   //  No product found - Display Error Alert
           //   this.makeToast("danger", "Invalid product code scanned", this.$t("Error"));
           //   this.search_input= '';
-          //   this.$refs.product_autocomplete.value = "";
-          //   this.product_filter = [];
+                   const term = this.search_input.trim().toLowerCase();
+          let matchedSerial = null;
 
-          // }
-          
-          
-          // Regular product search (for non-weighing scale barcodes)
-          const product_filter = this.products.filter(product => product.code === this.search_input || product.barcode.includes(this.search_input));
-              if(product_filter.length === 1){
-                this.SearchProduct(product_filter[0], weight);
-              }else {
-                this.product_filter=  this.products.filter(product => {
-                  return (
-                    product.name.toLowerCase().includes(this.search_input.toLowerCase()) ||
-                    product.code.toLowerCase().includes(this.search_input.toLowerCase()) ||
-                    product.barcode.toLowerCase().includes(this.search_input.toLowerCase())
-                    );
-                });
+          const product_filter = this.products.filter(product => {
+            const codeMatch = String(product.code || '').toLowerCase() === term;
+            const barcodeMatch = String(product.barcode || '').toLowerCase().includes(term);
+            let serialMatch = false;
+            if (Array.isArray(product.serials)) {
+              serialMatch = product.serials.some(s => {
+                if (String(s).trim().toLowerCase() === term) {
+                  matchedSerial = String(s).trim();
+                  return true;
+                }
+                return false;
+              });
             }
+            return codeMatch || barcodeMatch || serialMatch;
+          });
+
+          if(product_filter.length === 1){
+            this.SearchProduct(product_filter[0], weight, matchedSerial);
+          } else if (product_filter.length === 0 && term.length >= 2) {
+            axios.get('products/serials/search', { params: { search: this.search_input.trim(), warehouse_id: this.sale.warehouse_id } })
+              .then(res => {
+                if (res.data && res.data.success && res.data.product_id) {
+                  const targetId = res.data.product_id;
+                  const targetVariant = res.data.variant_id;
+                  const found = this.products.find(p => p.id === targetId && (targetVariant ? p.product_variant_id === targetVariant : true));
+                  if (found) {
+                    this.SearchProduct(found, null, res.data.serial_no || this.search_input.trim());
+                    return;
+                  }
+                }
+                this.filterDropdownProducts(term);
+              })
+              .catch(() => {
+                this.filterDropdownProducts(term);
+              });
+          } else {
+            this.filterDropdownProducts(term);
+          }
         }, 800);
       } else {
         this.makeToast(
@@ -977,6 +999,21 @@ export default {
           this.$t("Warning")
         );
       }
+    },
+
+    filterDropdownProducts(term) {
+      this.product_filter = this.products.filter(product => {
+        const name = String(product.name || '').toLowerCase();
+        const code = String(product.code || '').toLowerCase();
+        const barcodeStr = String(product.barcode || '').toLowerCase();
+        const serialsMatch = Array.isArray(product.serials) && product.serials.some(s => String(s).toLowerCase().includes(term));
+        return (
+          name.includes(term) ||
+          code.includes(term) ||
+          barcodeStr.includes(term) ||
+          serialsMatch
+        );
+      });
     },
 
       //---------------------- Event Select Status ------------------------------\\
@@ -1010,21 +1047,15 @@ export default {
       if (isNaN(this.payment.amount)) {
         this.payment.amount = 0;
       } else {
-        if (this.payment.amount > this.payment.received_amount) {
-          this.makeToast(
-            "warning",
-            this.$t("Paying_amount_is_greater_than_Received_amount"),
-            this.$t("Warning")
-          );
-          this.payment.amount = 0;
-        } 
-        else if (this.payment.amount > this.GrandTotal) {
+        if (this.payment.amount > this.GrandTotal) {
           this.makeToast(
             "warning",
             this.$t("Paying_amount_is_greater_than_Grand_Total"),
             this.$t("Warning")
           );
-          this.payment.amount = 0;
+          this.payment.amount = this.GrandTotal;
+        } else {
+          this.payment.amount = this.payment.amount;
         }
       }
     },
@@ -1046,13 +1077,33 @@ export default {
 
     //------------------------- Submit Search Product
 
-    SearchProduct(result, weight = null) {
+    SearchProduct(result, weight = null, matchedSerial = null) {
       this.product = {};
-      if (
-        this.details.length > 0 &&
-        this.details.some(detail => detail.code === result.code)
-      ) {
-        this.makeToast("warning", this.$t("AlreadyAdd"), this.$t("Warning"));
+      const existingDetail = this.details.length > 0
+        ? this.details.find(detail => detail.code === result.code)
+        : null;
+
+      if (existingDetail) {
+        if (matchedSerial) {
+          if (existingDetail.enable_serial_tracking) {
+            if (!Array.isArray(existingDetail.serial_numbers)) this.$set(existingDetail, 'serial_numbers', []);
+            if (!existingDetail.serial_numbers.includes(matchedSerial)) {
+              existingDetail.serial_numbers.push(matchedSerial);
+            }
+            existingDetail.imei_number = existingDetail.serial_numbers.join(', ');
+            existingDetail.quantity = existingDetail.serial_numbers.length;
+          } else {
+            if (!existingDetail.imei_number) {
+              existingDetail.imei_number = matchedSerial;
+            } else if (!existingDetail.imei_number.includes(matchedSerial)) {
+              existingDetail.imei_number = existingDetail.imei_number + ', ' + matchedSerial;
+            }
+            existingDetail.quantity = existingDetail.quantity + 1;
+          }
+          this.makeToast("success", "Serial number added to line", this.$t("Success") || "Success");
+        } else {
+          this.makeToast("warning", this.$t("AlreadyAdd"), this.$t("Warning"));
+        }
       } else {
           if( result.product_type =='is_service'){
             this.product.quantity = 1;
@@ -1071,6 +1122,9 @@ export default {
               }
           }
         this.product.product_variant_id = result.product_variant_id;
+        if (matchedSerial) {
+          this.pending_matched_serial = matchedSerial;
+        }
         this.Get_Product_Details(result.id, result.product_variant_id);
       }
 
