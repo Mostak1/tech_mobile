@@ -970,25 +970,26 @@ export default {
     //------------- Submit Search Product ----------------------\\
 
     SearchProduct(result, matchedSerial = null) {
+      const cleanMatchedSerial = typeof matchedSerial === 'string' ? matchedSerial : null;
       this.product = {};
       const existingDetail = this.details.length > 0
         ? this.details.find(detail => detail.code === result.code)
         : null;
 
       if (existingDetail) {
-        if (matchedSerial) {
+        if (cleanMatchedSerial) {
           if (existingDetail.enable_serial_tracking) {
             if (!Array.isArray(existingDetail.serial_numbers)) this.$set(existingDetail, 'serial_numbers', []);
-            if (!existingDetail.serial_numbers.includes(matchedSerial)) {
-              existingDetail.serial_numbers.push(matchedSerial);
+            if (!existingDetail.serial_numbers.includes(cleanMatchedSerial)) {
+              existingDetail.serial_numbers.push(cleanMatchedSerial);
             }
             existingDetail.imei_number = existingDetail.serial_numbers.join(', ');
             existingDetail.quantity = existingDetail.serial_numbers.length;
           } else {
             if (!existingDetail.imei_number) {
-              existingDetail.imei_number = matchedSerial;
-            } else if (!existingDetail.imei_number.includes(matchedSerial)) {
-              existingDetail.imei_number = existingDetail.imei_number + ', ' + matchedSerial;
+              existingDetail.imei_number = cleanMatchedSerial;
+            } else if (!existingDetail.imei_number.includes(cleanMatchedSerial)) {
+              existingDetail.imei_number = existingDetail.imei_number + ', ' + cleanMatchedSerial;
             }
             existingDetail.quantity = existingDetail.quantity + 1;
           }
@@ -1011,8 +1012,8 @@ export default {
             }
           }
         this.product.product_variant_id = result.product_variant_id;
-        if (matchedSerial) {
-          this.pending_matched_serial = matchedSerial;
+        if (cleanMatchedSerial) {
+          this.pending_matched_serial = cleanMatchedSerial;
         }
         this.Get_Product_Details(result.id, result.product_variant_id);
       }

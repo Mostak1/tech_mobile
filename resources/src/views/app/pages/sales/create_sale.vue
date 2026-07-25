@@ -1903,6 +1903,7 @@ export default {
 
 
     SearchProduct(result, weight = null, matchedSerial = null) {
+      const actualWeight = (typeof weight === 'number' && !isNaN(weight)) ? weight : null;
       this.product = {};
       const existingDetail = this.details.length > 0
         ? this.details.find(detail => detail.code === result.code)
@@ -1942,8 +1943,8 @@ export default {
             this.product.fix_stock = result.qte;
 
              // Check if it's a weighing scale product
-             if (weight !== null) {
-              this.product.quantity = weight; // Assign extracted weight
+             if (actualWeight !== null) {
+              this.product.quantity = actualWeight; // Assign extracted weight
             } else {
               this.product.quantity = result.qte_sale < 1 ? result.qte_sale : 1;
             }

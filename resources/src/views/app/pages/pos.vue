@@ -5518,13 +5518,15 @@ export default {
     },
 
     Check_Product_Exist(product, id, weight = null, matchedSerial = null) {
+      const actualWeight = (typeof weight === 'number' && !isNaN(weight)) ? weight : null;
+      const cleanMatchedSerial = typeof matchedSerial === 'string' ? matchedSerial : null;
       if(this.load_product){
         this.load_product = false;
         NProgress.start();
         NProgress.set(0.1);
         this.product = {};
-        if (matchedSerial) {
-          this.product.pending_matched_serial = matchedSerial;
+        if (cleanMatchedSerial) {
+          this.product.pending_matched_serial = cleanMatchedSerial;
         }
 
         if( product.product_type == 'is_service'){
@@ -5535,8 +5537,8 @@ export default {
           this.product.current = product.qte_sale;
           this.product.fix_stock = product.qte;
 
-          if (weight !== null) {
-            this.product.quantity = weight;
+          if (actualWeight !== null) {
+            this.product.quantity = actualWeight;
           } else {
             this.product.quantity = product.qte_sale < 1 ? product.qte_sale : 1;
           }
@@ -6193,6 +6195,20 @@ export default {
         const out = { ...d };
         delete out.available_batches;
         delete out.batches_loading;
+        delete out.available_serials;
+        delete out.serials_loading;
+        delete out.serials;
+        delete out.pending_matched_serial;
+
+        if (Array.isArray(d.serial_numbers) && d.serial_numbers.length > 0) {
+          out.serial_numbers = d.serial_numbers;
+          out.imei_number = d.serial_numbers.join(', ');
+        } else if (typeof d.imei_number === 'string') {
+          out.imei_number = d.imei_number;
+        } else if (Array.isArray(d.imei_number)) {
+          out.imei_number = d.imei_number.join(', ');
+        }
+
         if (d.is_batch_tracked && Array.isArray(d.batches)) {
           out.batches = d.batches
             .filter(b => b && b.product_batch_id && Number(b.qty) > 0)

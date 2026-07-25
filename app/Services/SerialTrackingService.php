@@ -234,17 +234,21 @@ class SerialTrackingService
 
             // Verify they exist and are available in this warehouse
             foreach ($serials as $serialNo) {
-                $serial = ProductSerialNumber::where('serial_no', $serialNo)->first();
+                $cleanNo = trim((string) $serialNo);
+                $serial = ProductSerialNumber::where('serial_no', $cleanNo)->first();
+                if (!$serial) {
+                    $serial = ProductSerialNumber::whereRaw('LOWER(TRIM(serial_no)) = ?', [strtolower($cleanNo)])->first();
+                }
                 $belongsToCurrentSale = $saleId && $serial && $serial->soldSellLine
                     && (int) $serial->soldSellLine->sale_id === (int) $saleId;
                 if (!$serial) {
-                    $errors[] = "Serial number $serialNo does not exist in the database.";
+                    $errors[] = "Serial number $cleanNo does not exist in the database.";
                 } elseif ((int) $serial->product_id !== (int) $productId) {
-                    $errors[] = "Serial number $serialNo belongs to a different product.";
+                    $errors[] = "Serial number $cleanNo belongs to a different product.";
                 } elseif (($serial->status !== 'available' || $serial->service_job_id !== null) && ! $belongsToCurrentSale) {
-                    $errors[] = "Serial number $serialNo is not available (Current status: {$serial->status}).";
-                } elseif (! $belongsToCurrentSale && $serial->current_location_id != $warehouseId) {
-                    $errors[] = "Serial number $serialNo is not located in the selected warehouse.";
+                    $errors[] = "Serial number $cleanNo is not available (Current status: {$serial->status}).";
+                } elseif (! $belongsToCurrentSale && !empty($serial->current_location_id) && (int)$serial->current_location_id !== (int)$warehouseId) {
+                    $errors[] = "Serial number $cleanNo is not located in the selected warehouse.";
                 }
             }
         }
@@ -284,7 +288,11 @@ class SerialTrackingService
             $this->reverseForSaleDetail($detail);
 
             foreach ($serials as $serialNo) {
-                $serial = ProductSerialNumber::where('serial_no', $serialNo)->first();
+                $cleanNo = trim((string) $serialNo);
+                $serial = ProductSerialNumber::where('serial_no', $cleanNo)->first();
+                if (!$serial) {
+                    $serial = ProductSerialNumber::whereRaw('LOWER(TRIM(serial_no)) = ?', [strtolower($cleanNo)])->first();
+                }
                 if ($serial) {
                     $serial->update([
                         'status' => 'sold',

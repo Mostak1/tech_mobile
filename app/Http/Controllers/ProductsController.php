@@ -2121,7 +2121,7 @@ class ProductsController extends BaseController
         }
 
         if (!$serial) {
-            return response()->json(['success' => false, 'message' => 'Serial number not found'], 404);
+            return response()->json(['success' => false, 'message' => 'Serial number not found'], 200);
         }
 
         return response()->json([

@@ -165,6 +165,15 @@ class PosController extends BaseController
                     $baseDate = Carbon::now();
                     $warrantyGuarantee = SaleDetail::computeWarrantyGuaranteeDates($product, $baseDate);
 
+                    $rawImei = $value['imei_number'] ?? null;
+                    if (is_array($rawImei)) {
+                        $rawImei = implode(', ', array_filter($rawImei));
+                    }
+                    if ((empty($rawImei) || trim((string)$rawImei) === '') && !empty($value['serial_numbers'])) {
+                        $serialsArr = is_array($value['serial_numbers']) ? $value['serial_numbers'] : explode(',', (string)$value['serial_numbers']);
+                        $rawImei = implode(', ', array_filter(array_map('trim', $serialsArr)));
+                    }
+
                     $orderDetails[] = array_merge([
                         'date' => Carbon::now(),
                         'sale_id' => $order->id,
@@ -178,7 +187,7 @@ class PosController extends BaseController
                         'tax_method' => $value['tax_method'],
                         'discount' => $value['discount'],
                         'discount_method' => $value['discount_Method'],
-                        'imei_number' => $value['imei_number'],
+                        'imei_number' => is_string($rawImei) && trim($rawImei) !== '' ? trim($rawImei) : null,
                         'price_type' => isset($value['price_type']) ? $value['price_type'] : 'retail',
                     ], $warrantyGuarantee);
 

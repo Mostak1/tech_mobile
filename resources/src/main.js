@@ -231,10 +231,6 @@ axios.interceptors.response.use(
     // ==========================
     // 404 / 403
     // ==========================
-    if (status === 404) {
-      router.push({ name: 'NotFound' });
-    }
-
     if (status === 403) {
       router.push({ name: 'not_authorize' });
     }
