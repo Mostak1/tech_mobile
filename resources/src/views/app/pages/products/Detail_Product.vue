@@ -34,7 +34,7 @@
         <div :style="{ display: 'flex', gap: '10px' }">
           <router-link
             v-if="currentUserPermissions && currentUserPermissions.includes('products_edit')"
-            :to="{ name: 'Edit_product', params: { id: product.id } }"
+            :to="{ name: 'edit_product', params: { id: product.id } }"
             class="btn btn-outline-primary d-inline-flex align-items-center"
             :style="{ borderRadius: '10px', fontWeight: '600', padding: '10px 18px' }"
           >
@@ -391,6 +391,83 @@
                   </div>
                 </div>
                 <div v-else class="text-center text-muted p-4 italic">No warehouse stock data available.</div>
+              </b-tab>
+
+              <!-- Product Variants Tab -->
+              <b-tab title="Product Variants" v-if="product.is_variant === 'yes' || (product.products_variants_data && product.products_variants_data.length)" :active="product.is_variant === 'yes'">
+                <div class="p-2">
+                  <div class="table-responsive">
+                    <table class="table table-bordered table-hover mb-3" :style="{ color: pdTheme.valueColor, fontSize: '13px' }">
+                      <thead :style="{ background: pdTheme.isDark ? '#334155' : '#f1f5f9', color: pdTheme.valueColor }">
+                        <tr>
+                          <th>Variant Name</th>
+                          <th>Code</th>
+                          <th>Cost Price</th>
+                          <th>Retail Price</th>
+                          <th>Wholesale Price</th>
+                          <th>Min Price</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="(v, idx) in product.products_variants_data" :key="idx">
+                          <td class="font-weight-bold">{{ v.name }}</td>
+                          <td><code>{{ v.code }}</code></td>
+                          <td>{{ v.cost }}</td>
+                          <td class="font-weight-bold text-success">{{ v.price }}</td>
+                          <td>{{ v.wholesale }}</td>
+                          <td>{{ v.min_price }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <!-- Variant Stock per Warehouse -->
+                  <div v-if="product.CountQTY_variants && product.CountQTY_variants.length" class="mt-3">
+                    <h6 class="font-weight-bold mb-3" :style="{ color: pdTheme.cardHeaderText }">Variant Stock by Warehouse</h6>
+                    <div
+                      :style="{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                        gap: '14px'
+                      }"
+                    >
+                      <div
+                        v-for="(vw, vi) in product.CountQTY_variants"
+                        :key="vi"
+                        :style="{
+                          background: pdTheme.warehouseCardBg,
+                          border: `1px solid ${pdTheme.warehouseCardBorder}`,
+                          borderRadius: '12px',
+                          padding: '14px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '12px'
+                        }"
+                      >
+                        <div
+                          :style="{
+                            width: '36px', height: '36px',
+                            borderRadius: '10px',
+                            background: '#6366f1',
+                            color: '#fff',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '16px',
+                            flexShrink: 0
+                          }"
+                        ><lucide-icon name="layers" /></div>
+                        <div :style="{ flex: 1 }">
+                          <div :style="{ fontSize: '11px', color: '#6366f1', fontWeight: '700', textTransform: 'uppercase' }">{{ vw.variant }} ({{ vw.mag }})</div>
+                          <div :style="{ fontSize: '16px', fontWeight: '700', color: pdTheme.warehouseValue }">
+                            {{ formatNumber(vw.qte || 0, 2) }}
+                            <span :style="{ fontSize: '12px', color: pdTheme.warehouseUnit, fontWeight: '500' }">{{ product.unit }}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </b-tab>
 
               <!-- Warranty & Terms Tab -->

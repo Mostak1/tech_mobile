@@ -53,7 +53,7 @@
                           @input="Selected_customer"
                           :reduce="label => label.value"
                           :placeholder="$t('Choose_Customer')"
-                          :options="clients.map(clients => ({label: clients.name, value: clients.id}))"
+                          :options="clients.map(c => ({label: c.phone ? c.name + ' (' + c.phone + ')' : c.name, value: c.id}))"
                         />
                         <b-input-group-append
                           v-if="currentUserPermissions && currentUserPermissions.includes('Customers_add')"

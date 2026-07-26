@@ -2496,7 +2496,7 @@ export default {
     // Customer options for v-select with phone search capability
     customerOptions() {
       return this.clients.map(client => ({
-        label: client.name,
+        label: client.phone ? `${client.name} (${client.phone})` : client.name,
         value: client.id,
         phone: client.phone || '',
         name: client.name || ''
