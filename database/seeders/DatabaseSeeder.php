@@ -26,7 +26,7 @@ class DatabaseSeeder extends Seeder
             PermissionRoleSeeder::class,
             Warehouse::class,
             StoreSettingSeeder::class,
-            DummyDataSeeder::class,
+            // DummyDataSeeder::class,
         ]);
 
     }

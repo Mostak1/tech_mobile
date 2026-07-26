@@ -1143,5 +1143,60 @@ class PermissionRoleSeeder extends Seeder
 
             ]
         );
+
+        $managerPermNames = [
+            'dashboard',
+            'Reports_profit',
+            'Reports_sales',
+            'Reports_purchase',
+            'product_sales_report',
+            'product_purchases_report',
+            'Customers_view',
+            'Customers_add',
+            'Customers_edit',
+            'Customers_delete',
+            'customers_import',
+            'products_view',
+            'products_add',
+            'products_edit',
+            'products_delete',
+            'product_import',
+            'Sales_view',
+            'Sales_add',
+            'Sales_edit',
+            'Sales_delete',
+            'Pos_view',
+            'payment_sales_view',
+            'payment_sales_add',
+            'payment_sales_edit',
+            'payment_sales_delete',
+            'Sale_Returns_view',
+            'Sale_Returns_add',
+            'Sale_Returns_edit',
+            'Sale_Returns_delete',
+            'pay_due',
+            'pay_sale_return_due',
+            'Purchases_view',
+            'Purchases_add',
+            'Purchases_edit',
+            'Purchases_delete',
+            'payment_purchases_view',
+            'payment_purchases_add',
+            'payment_purchases_edit',
+            'payment_purchases_delete',
+            'Purchase_Returns_view',
+            'Purchase_Returns_add',
+            'Purchase_Returns_edit',
+            'Purchase_Returns_delete',
+            'pay_supplier_due',
+            'pay_purchase_return_due',
+        ];
+        $managerPermIds = DB::table('permissions')->whereIn('name', $managerPermNames)->pluck('id');
+        foreach ($managerPermIds as $pId) {
+            DB::table('permission_role')->updateOrInsert(
+                ['permission_id' => $pId, 'role_id' => 2],
+                ['permission_id' => $pId, 'role_id' => 2]
+            );
+        }
     }
 }

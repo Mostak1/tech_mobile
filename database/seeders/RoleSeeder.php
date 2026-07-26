@@ -16,13 +16,22 @@ class RoleSeeder extends Seeder
     {
         // Insert some stuff
         DB::table('roles')->insert(
-            [[
-                'id' => 1,
-                'name' => 'Owner',
-                'label' => 'Owner',
-                'status' => 1,
-                'description' => 'Owner',
-            ]]
+            [
+                [
+                    'id' => 1,
+                    'name' => 'Owner',
+                    'label' => 'Owner',
+                    'status' => 1,
+                    'description' => 'Owner',
+                ],
+                [
+                    'id' => 2,
+                    'name' => 'Sales & Inventory Manager',
+                    'label' => 'Sales & Inventory Manager',
+                    'status' => 1,
+                    'description' => 'Access to Dashboard, 5 Reports, Customers, Products, Sales & Returns, Purchases & Returns',
+                ]
+            ]
         );
     }
 }
