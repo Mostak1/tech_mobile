@@ -126,6 +126,16 @@
                     </b-form-group>
                   </b-col>
 
+                      <!-- Facebook Page / Link -->
+                      <b-col lg="6" md="6" sm="12" class="mb-3">
+                        <b-form-group label="Facebook Page / Link">
+                          <b-form-input
+                            placeholder="e.g. fb.com/rajoninternational786"
+                            v-model="setting.facebook"
+                          ></b-form-input>
+                        </b-form-group>
+                      </b-col>
+
                       <!-- Company Address -->
                       <b-col lg="12" md="12" sm="12" class="mb-3">
                     <validation-provider
@@ -3516,6 +3526,7 @@ export default {
         CompanyName: "",
         CompanyPhone: "",
         CompanyAdress: "",
+        facebook: "",
         footer:"",
         developed_by:"",
         default_language:"",
@@ -4351,6 +4362,7 @@ export default {
       self.data.append("CompanyName", self.setting.CompanyName);
       self.data.append("CompanyPhone", self.setting.CompanyPhone);
       self.data.append("CompanyAdress", self.setting.CompanyAdress);
+      self.data.append("facebook", self.setting.facebook || "");
       self.data.append("company_name_ar", self.setting.company_name_ar || '');
       self.data.append("vat_number", self.setting.vat_number || '');
       self.data.append("zatca_enabled", self.setting.zatca_enabled ? 1 : 0);

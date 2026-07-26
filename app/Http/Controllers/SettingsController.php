@@ -146,6 +146,7 @@ class SettingsController extends Controller
             'CompanyName' => $request['CompanyName'],
             'CompanyPhone' => $request['CompanyPhone'],
             'CompanyAdress' => $request['CompanyAdress'],
+            'facebook' => $request['facebook'] ?? null,
             'company_name_ar' => $request['company_name_ar'] ?? $setting->company_name_ar,
             'vat_number' => $request['vat_number'] ?? $setting->vat_number,
             'zatca_enabled' => ($request['zatca_enabled'] == '1' || $request['zatca_enabled'] == 'true' || $request['zatca_enabled'] === 1 || $request['zatca_enabled'] === true) ? 1 : 0,
@@ -615,6 +616,7 @@ class SettingsController extends Controller
             $item['CompanyName'] = $settings->CompanyName;
             $item['CompanyPhone'] = $settings->CompanyPhone;
             $item['CompanyAdress'] = $settings->CompanyAdress;
+            $item['facebook'] = $settings->facebook ?? '';
             $item['logo'] = $settings->logo;
             $item['footer'] = $settings->footer;
             $item['developed_by'] = $settings->developed_by;
