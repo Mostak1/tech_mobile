@@ -5,9 +5,13 @@
 /public/js/bundle/
 /node_modules
 /public/hot
-/public/storage
-/storage/*.key
-/storage/framework/sessions
+/public/storage/*.key
+/storage/framework/sessions/*
+!/storage/framework/sessions/.gitkeep
+/storage/framework/views/*
+!/storage/framework/views/.gitkeep
+/storage/framework/cache/data/*
+!/storage/framework/cache/data/.gitkeep
 /vendor
 .env
 .env.backup

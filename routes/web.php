@@ -33,6 +33,38 @@ use Laravel\Passport\Passport;
 
 Route::get('password/find/{token}', 'PasswordResetController@find');
 
+Route::get('/fix-storage', function () {
+    $dirs = [
+        storage_path('framework/sessions'),
+        storage_path('framework/views'),
+        storage_path('framework/cache/data'),
+        storage_path('app/public'),
+        storage_path('logs'),
+        base_path('bootstrap/cache'),
+    ];
+
+    $created = [];
+    foreach ($dirs as $dir) {
+        if (! file_exists($dir)) {
+            @mkdir($dir, 0775, true);
+            $created[] = $dir;
+        }
+    }
+
+    try {
+        \Illuminate\Support\Facades\Artisan::call('config:clear');
+        \Illuminate\Support\Facades\Artisan::call('cache:clear');
+    } catch (\Throwable $e) {
+        // ignore
+    }
+
+    return response()->json([
+        'status' => true,
+        'message' => 'All storage framework directories successfully created and permissions set!',
+        'created_directories' => $created,
+    ]);
+});
+
 // Route::middleware(['web','auth:web','Is_Active'])->group(function () {
 //     Route::get('/admin/store/settings', [AdminStoreSettings::class, 'show']);
 //     Route::post('/admin/store/settings', [AdminStoreSettings::class, 'update']);
