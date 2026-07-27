@@ -131,11 +131,49 @@ Route::get('/fix-passport', function () {
     @chmod($pubKey, 0644);
     @chmod($privKey, 0600);
 
+    $clientsCreated = false;
+    if (\Illuminate\Support\Facades\DB::table('oauth_clients')->count() === 0) {
+        $clientId = \Illuminate\Support\Facades\DB::table('oauth_clients')->insertGetId([
+            'user_id' => null,
+            'name' => 'Laravel Personal Access Client',
+            'secret' => \Illuminate\Support\Str::random(40),
+            'provider' => null,
+            'redirect' => 'http://localhost',
+            'personal_access_client' => 1,
+            'password_client' => 0,
+            'revoked' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \Illuminate\Support\Facades\DB::table('oauth_personal_access_clients')->insert([
+            'client_id' => $clientId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        \Illuminate\Support\Facades\DB::table('oauth_clients')->insert([
+            'user_id' => null,
+            'name' => 'Laravel Password Grant Client',
+            'secret' => \Illuminate\Support\Str::random(40),
+            'provider' => 'users',
+            'redirect' => 'http://localhost',
+            'personal_access_client' => 0,
+            'password_client' => 1,
+            'revoked' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $clientsCreated = true;
+    }
+
     return response()->json([
         'status' => true,
-        'message' => 'Passport OAuth keys generated and permissions set successfully!',
+        'message' => 'Passport OAuth keys and clients setup successfully!',
         'public_key_exists' => file_exists($pubKey) && filesize($pubKey) > 0,
         'private_key_exists' => file_exists($privKey) && filesize($privKey) > 0,
+        'oauth_clients_count' => \Illuminate\Support\Facades\DB::table('oauth_clients')->count(),
+        'clients_created_now' => $clientsCreated,
         'details' => $results,
     ]);
 });
