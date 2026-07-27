@@ -65,6 +65,57 @@ Route::get('/fix-storage', function () {
     ]);
 });
 
+Route::get('/clear-config', function () {
+    $results = [];
+    try {
+        \Illuminate\Support\Facades\Artisan::call('config:clear');
+        $results['config'] = \Illuminate\Support\Facades\Artisan::output();
+    } catch (\Throwable $e) {
+        $results['config'] = $e->getMessage();
+    }
+
+    try {
+        \Illuminate\Support\Facades\Artisan::call('cache:clear');
+        $results['cache'] = \Illuminate\Support\Facades\Artisan::output();
+    } catch (\Throwable $e) {
+        $results['cache'] = $e->getMessage();
+    }
+
+    try {
+        \Illuminate\Support\Facades\Artisan::call('route:clear');
+        $results['route'] = \Illuminate\Support\Facades\Artisan::output();
+    } catch (\Throwable $e) {
+        $results['route'] = $e->getMessage();
+    }
+
+    try {
+        \Illuminate\Support\Facades\Artisan::call('view:clear');
+        $results['view'] = \Illuminate\Support\Facades\Artisan::output();
+    } catch (\Throwable $e) {
+        $results['view'] = $e->getMessage();
+    }
+
+    return response()->json([
+        'status' => true,
+        'message' => 'Configuration, cache, routes, and compiled views cleared successfully!',
+        'details' => $results,
+    ]);
+});
+
+Route::get('/view-logs', function () {
+    $logFile = storage_path('logs/laravel.log');
+    if (! file_exists($logFile)) {
+        return response('No laravel.log file found at: '.$logFile, 200)
+            ->header('Content-Type', 'text/plain');
+    }
+
+    $lines = file($logFile);
+    $lastLines = array_slice($lines, -150);
+
+    return response(implode('', $lastLines), 200)
+        ->header('Content-Type', 'text/plain');
+});
+
 // Route::middleware(['web','auth:web','Is_Active'])->group(function () {
 //     Route::get('/admin/store/settings', [AdminStoreSettings::class, 'show']);
 //     Route::post('/admin/store/settings', [AdminStoreSettings::class, 'update']);
