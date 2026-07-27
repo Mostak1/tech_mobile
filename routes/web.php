@@ -116,6 +116,30 @@ Route::get('/view-logs', function () {
         ->header('Content-Type', 'text/plain');
 });
 
+Route::get('/fix-passport', function () {
+    $results = [];
+    try {
+        \Illuminate\Support\Facades\Artisan::call('passport:keys', ['--force' => true]);
+        $results['passport_keys'] = \Illuminate\Support\Facades\Artisan::output();
+    } catch (\Throwable $e) {
+        $results['passport_keys_error'] = $e->getMessage();
+    }
+
+    $pubKey = storage_path('oauth-public.key');
+    $privKey = storage_path('oauth-private.key');
+
+    @chmod($pubKey, 0644);
+    @chmod($privKey, 0600);
+
+    return response()->json([
+        'status' => true,
+        'message' => 'Passport OAuth keys generated and permissions set successfully!',
+        'public_key_exists' => file_exists($pubKey) && filesize($pubKey) > 0,
+        'private_key_exists' => file_exists($privKey) && filesize($privKey) > 0,
+        'details' => $results,
+    ]);
+});
+
 // Route::middleware(['web','auth:web','Is_Active'])->group(function () {
 //     Route::get('/admin/store/settings', [AdminStoreSettings::class, 'show']);
 //     Route::post('/admin/store/settings', [AdminStoreSettings::class, 'update']);
