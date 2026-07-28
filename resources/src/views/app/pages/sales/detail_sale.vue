@@ -540,97 +540,57 @@ export default {
     print() {
       // Fetch HTML from sale_pdf.blade.php template and print it
       NProgress.start();
-      NProgress.set(0.1);
       let id = this.$route.params.id;
-      let printWindow = null;
-      let printTriggered = false;
-      let closeTimeout = null;
-      
+
+      // Open print window IMMEDIATELY on click event to bypass browser popup blockers
+      const printWindow = window.open('', '_blank', 'width=900,height=750');
+      if (printWindow) {
+        try {
+          printWindow.document.open();
+          printWindow.document.write('<!DOCTYPE html><html><head><title>Print Invoice</title></head><body style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;background:#f8fafc;"><div style="text-align:center;"><div style="font-size:18px;font-weight:600;color:#334155;margin-bottom:8px;">Preparing Invoice...</div><div style="font-size:13px;color:#64748b;">Please wait while the printable invoice is loaded.</div></div></body></html>');
+          printWindow.document.close();
+        } catch (e) {}
+      }
+
       axios
         .get(`sale_print_html/${id}`)
         .then(response => {
-          // Create a new window with the HTML content
-          printWindow = window.open('', '_blank', 'width=800,height=600');
-          if (printWindow) {
-            printWindow.document.open();
-            printWindow.document.write(response.data);
-            printWindow.document.close();
-            
-            // Function to close the print window
-            const closePrintWindow = () => {
-              if (closeTimeout) {
-                clearTimeout(closeTimeout);
-              }
-              if (printWindow && !printWindow.closed) {
-                printWindow.close();
-              }
-            };
-            
-            // Function to trigger print once
-            const triggerPrint = () => {
-              if (printTriggered) {
-                return; // Already triggered, don't trigger again
-              }
-              
-              if (printWindow && printWindow.document.readyState === 'complete') {
-                printTriggered = true;
+          NProgress.done();
+
+          if (printWindow && !printWindow.closed) {
+            try {
+              printWindow.document.open();
+              printWindow.document.write(response.data);
+              printWindow.document.close();
+
+              const triggerPrint = () => {
                 try {
-                  // Trigger print
                   printWindow.focus();
                   printWindow.print();
-                  
-                  // Listen for print dialog close (whether user prints or cancels)
-                  // afterprint event fires when print dialog closes (modern browsers)
-                  const handleAfterPrint = () => {
-                    closePrintWindow();
-                  };
-                  
-                  printWindow.addEventListener('afterprint', handleAfterPrint, { once: true });
-                  
-                  // Also use matchMedia listener as fallback for better browser support
-                  if (printWindow.matchMedia) {
-                    const mediaQueryList = printWindow.matchMedia('print');
-                    const handleMediaChange = (mql) => {
-                      if (!mql.matches) {
-                        // Print dialog closed
-                        closePrintWindow();
-                        mediaQueryList.removeListener(handleMediaChange);
-                      }
-                    };
-                    mediaQueryList.addListener(handleMediaChange);
-                  }
-                  
-                  // Fallback: close window after reasonable delay if events don't fire
-                  // This handles edge cases and older browsers
-                  closeTimeout = setTimeout(closePrintWindow, 2000);
                 } catch (e) {
-                  console.error('Print error:', e);
-                  closePrintWindow();
+                  console.error('Print trigger error:', e);
                 }
-              }
-            };
-            
-            // Wait for content to load, then print
-            if (printWindow.document.readyState === 'complete') {
-              // Content already loaded
-              setTimeout(triggerPrint, 100);
-            } else {
-              // Wait for load event
-              printWindow.onload = function() {
-                setTimeout(triggerPrint, 100);
               };
+
+              if (printWindow.document.readyState === 'complete') {
+                setTimeout(triggerPrint, 100);
+              } else {
+                printWindow.onload = () => {
+                  setTimeout(triggerPrint, 100);
+                };
+              }
+            } catch (e) {
+              console.error('Render error:', e);
             }
           }
-          
-          setTimeout(() => NProgress.done(), 500);
         })
         .catch(error => {
+          NProgress.done();
           console.error('Print error:', error);
-          this.makeToast('danger', this.$t('PrintError') || 'Print failed', this.$t('Failed'));
           if (printWindow && !printWindow.closed) {
             printWindow.close();
           }
-          setTimeout(() => NProgress.done(), 500);
+          this.makeToast('danger', this.$t('PrintError') || 'Print failed', this.$t('Failed'));
         });
     },
 
