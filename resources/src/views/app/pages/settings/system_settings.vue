@@ -3485,6 +3485,7 @@ export default {
         { id: 'header', labelKey: 'Dashboard_Header' },
         { id: 'stat_cards_1', labelKey: 'Dashboard_Stat_Cards_1' },
         { id: 'stat_cards_2', labelKey: 'Dashboard_Stat_Cards_2' },
+        { id: 'stat_cards_3', labelKey: 'Dashboard_Stat_Cards_3' },
         { id: 'chart_sales_purchases', labelKey: 'Dashboard_Chart_Sales_Purchases' },
         { id: 'chart_top_selling', labelKey: 'Dashboard_Chart_Top_Selling' },
         { id: 'sales_by_payment_stock_value', labelKey: 'Dashboard_Sales_By_Payment_Stock' },

@@ -545,7 +545,7 @@ class QuotationsController extends BaseController
                     ->where('id', $detail->product_variant_id)->first();
 
                 $data['code'] = $productsVariants->code;
-                $data['name'] = '['.$productsVariants->name.']'.$detail['product']['name'];
+                $data['name'] = $detail['product']['name'].' ['.$productsVariants->name.']';
 
             } else {
                 $data['code'] = $detail['product']['code'];
@@ -674,7 +674,7 @@ class QuotationsController extends BaseController
                     ->where('id', $detail->product_variant_id)->first();
 
                 $data['code'] = $productsVariants->code;
-                $data['name'] = '['.$productsVariants->name.']'.$detail['product']['name'];
+                $data['name'] = $detail['product']['name'].' ['.$productsVariants->name.']';
 
             } else {
                 $data['code'] = $detail['product']['code'];
@@ -786,7 +786,7 @@ class QuotationsController extends BaseController
                     ->where('id', $detail->product_variant_id)->first();
 
                 $data['code'] = $productsVariants->code;
-                $data['name'] = '['.$productsVariants->name.']'.$detail['product']['name'];
+                $data['name'] = $detail['product']['name'].' ['.$productsVariants->name.']';
 
             } else {
                 $data['code'] = $detail['product']['code'];
@@ -997,7 +997,7 @@ class QuotationsController extends BaseController
                 $data['product_variant_id'] = $detail->product_variant_id;
 
                 $data['code'] = $productsVariants->code;
-                $data['name'] = '['.$productsVariants->name.']'.$detail['product']['name'];
+                $data['name'] = $detail['product']['name'].' ['.$productsVariants->name.']';
 
                 if ($unit && $unit->operator == '/') {
                     $stock = $item_product ? $item_product->qte * $unit->operator_value : 0;

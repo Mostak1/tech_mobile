@@ -751,7 +751,8 @@
 
                 <b-col md="12">
                   <b-form-group>
-                    <b-button variant="primary" :disabled="paymentProcessing || hasMinPriceViolation || (sale.statut === 'completed' && hasBatchValidationErrors) || hasSerialValidationErrors" @click="Submit_Sale"><lucide-icon class="me-2 font-weight-bold" name="check" /> {{$t('submit')}}</b-button>
+                    <b-button variant="primary" class="mr-2 mb-1" :disabled="paymentProcessing || hasMinPriceViolation || (sale.statut === 'completed' && hasBatchValidationErrors) || hasSerialValidationErrors" @click="Submit_Sale(false)"><lucide-icon class="me-2 font-weight-bold" name="check" /> {{$t('submit')}}</b-button>
+                    <b-button variant="info" class="mr-2 mb-1" :disabled="paymentProcessing || hasMinPriceViolation || (sale.statut === 'completed' && hasBatchValidationErrors) || hasSerialValidationErrors" @click="Submit_Sale(true)"><lucide-icon class="me-2 font-weight-bold" name="printer" /> {{ $t('Save_And_Print') || 'Save & Print' }}</b-button>
                     <div v-once class="typo__p" v-if="paymentProcessing">
                     <div class="spinner sm spinner-primary mt-3"></div>
                   </div>
@@ -1069,8 +1070,8 @@ export default {
       focused: false,
       timer:null,
       search_input:'',
-      product_filter:[],
-
+      shouldPrintAfterSave: false,
+      pendingPrintWindow: null,
       paymentProcessing: false,
       Submit_Processing_detail:false,
       SubmitProcessing: false,
@@ -1527,7 +1528,16 @@ export default {
 
   
     //--- Submit Validate Create Sale
-    Submit_Sale() {
+    Submit_Sale(shouldPrint = false) {
+      this.shouldPrintAfterSave = shouldPrint === true;
+      if (this.shouldPrintAfterSave) {
+        // Open during the user click. Opening after the async save response is
+        // commonly blocked by browsers as an unsolicited popup.
+        this.pendingPrintWindow = window.open('', '_blank', 'height=750,width=850');
+        if (this.pendingPrintWindow) {
+          this.pendingPrintWindow.document.write('<p style="font-family: sans-serif; padding: 20px;">Preparing invoice...</p>');
+        }
+      }
       // hard block if any line violates min price
       if (this.hasMinPriceViolation) {
         this.makeToast('warning', this.$t('Price_below_min_not_allowed'), this.$t('Warning'));
@@ -2666,7 +2676,17 @@ export default {
               );
               NProgress.done();
               this.paymentProcessing = false;
-              this.$router.push({ name: "index_sales" });
+
+              const newSaleId = response.data ? (response.data.id || (response.data.order && response.data.order.id)) : null;
+              if (newSaleId && this.shouldPrintAfterSave) {
+                this.autoPrintSaleHtml(newSaleId);
+              } else {
+                if (this.pendingPrintWindow && !this.pendingPrintWindow.closed) {
+                  this.pendingPrintWindow.close();
+                }
+                this.pendingPrintWindow = null;
+                this.$router.push({ name: "index_sales" });
+              }
             })
             .catch(error => {
               NProgress.done();
@@ -2683,6 +2703,54 @@ export default {
             });
         }
       }
+    },
+
+    autoPrintSaleHtml(id) {
+      const printWindow = this.pendingPrintWindow || window.open('', '_blank', 'height=750,width=850');
+      this.pendingPrintWindow = null;
+      if (!printWindow) {
+        this.makeToast("warning", "Please allow popups to print the invoice.", this.$t("Warning"));
+        return;
+      }
+
+      axios
+        .get(`sale_print_html/${id}`)
+        .then(response => {
+          if (printWindow && !printWindow.closed) {
+            try {
+              printWindow.document.open();
+              printWindow.document.write(response.data);
+              printWindow.document.close();
+
+              let navigated = false;
+              const navigateAway = () => {
+                if (!navigated) {
+                  navigated = true;
+                  try { if (printWindow && !printWindow.closed) printWindow.close(); } catch (e) {}
+                  this.$router.push({ name: "index_sales" });
+                }
+              };
+
+              try { printWindow.onafterprint = navigateAway; } catch (e) {}
+
+              setTimeout(() => {
+                try { printWindow.focus(); } catch (e) {}
+                try { printWindow.print(); } catch (e) { navigateAway(); }
+              }, 300);
+            } catch (e) {
+              console.error('Render error:', e);
+              if (printWindow && !printWindow.closed) printWindow.close();
+              this.makeToast("danger", "Could not render the invoice for printing.", this.$t("Failed"));
+            }
+          }
+        })
+        .catch(error => {
+          console.error('Print error:', error);
+          if (printWindow && !printWindow.closed) {
+            printWindow.close();
+          }
+          this.makeToast("danger", "Could not load the invoice for printing.", this.$t("Failed"));
+        });
     },
 
     //-------------------------------- Get Last Detail Id -------------------------\\

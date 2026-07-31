@@ -1386,7 +1386,7 @@ class SalesController extends BaseController
                     ->where('id', $detail->product_variant_id)->first();
 
                 $data['code'] = $productsVariants->code;
-                $data['name'] = '['.$productsVariants->name.']'.$detail['product']['name'];
+                $data['name'] = $detail['product']['name'].' ['.$productsVariants->name.']';
 
             } else {
                 $data['code'] = $detail['product']['code'];
@@ -1495,7 +1495,7 @@ class SalesController extends BaseController
                     ->where('id', $detail->product_variant_id)->first();
 
                 $data['code'] = $productsVariants->code;
-                $data['name'] = '['.$productsVariants->name.']'.$detail['product']['name'];
+                $data['name'] = $detail['product']['name'].' ['.$productsVariants->name.']';
 
             } else {
                 $data['code'] = $detail['product']['code'];
@@ -2294,7 +2294,12 @@ class SalesController extends BaseController
 
         $details = [];
         $helpers = new helpers;
-        $sale_data = Sale::with('details.product.unitSale')
+        $sale_data = Sale::with([
+            'client',
+            'details.product.unitSale',
+            'details.saleUnit',
+            'details.productVariant'
+        ])
             ->where('deleted_at', '=', null)
             ->findOrFail($id);
 
@@ -2321,26 +2326,15 @@ class SalesController extends BaseController
 
             // check if detail has sale_unit_id Or Null
             if ($detail->sale_unit_id !== null) {
-                $unit = Unit::where('id', $detail->sale_unit_id)->first();
+                $unit = $detail->saleUnit;
             } else {
-                $product_unit_sale_id = Product::with('unitSale')
-                    ->where('id', $detail->product_id)
-                    ->first();
-
-                if ($product_unit_sale_id['unitSale']) {
-                    $unit = Unit::where('id', $product_unit_sale_id['unitSale']->id)->first();
-                }
-                $unit = null;
-
+                $unit = $detail['product']['unitSale'] ?? null;
             }
 
-            if ($detail->product_variant_id) {
-
-                $productsVariants = ProductVariant::where('product_id', $detail->product_id)
-                    ->where('id', $detail->product_variant_id)->first();
-
+            if ($detail->product_variant_id && $detail->productVariant) {
+                $productsVariants = $detail->productVariant;
                 $data['code'] = $productsVariants->code;
-                $data['name'] = '['.$productsVariants->name.']'.$detail['product']['name'];
+                $data['name'] = $detail['product']['name'].' ['.$productsVariants->name.']';
             } else {
                 $data['code'] = $detail['product']['code'];
                 $data['name'] = $detail['product']['name'];
@@ -2391,12 +2385,14 @@ class SalesController extends BaseController
             'payments' => $payments,
         ])->render();
 
-        $arabic = new Arabic;
-        $p = $arabic->arIdentify($Html);
+        if (preg_match('/[\x{0600}-\x{06FF}]/u', $Html)) {
+            $arabic = new Arabic;
+            $p = $arabic->arIdentify($Html);
 
-        for ($i = count($p) - 1; $i >= 0; $i -= 2) {
-            $utf8ar = $arabic->utf8Glyphs(substr($Html, $p[$i - 1], $p[$i] - $p[$i - 1]));
-            $Html = substr_replace($Html, $utf8ar, $p[$i - 1], $p[$i] - $p[$i - 1]);
+            for ($i = count($p) - 1; $i >= 0; $i -= 2) {
+                $utf8ar = $arabic->utf8Glyphs(substr($Html, $p[$i - 1], $p[$i] - $p[$i - 1]));
+                $Html = substr_replace($Html, $utf8ar, $p[$i - 1], $p[$i] - $p[$i - 1]);
+            }
         }
 
         $pdf = PDF::loadHTML($Html, 'UTF-8');
@@ -2416,7 +2412,12 @@ class SalesController extends BaseController
     {
         $details = [];
         $helpers = new helpers;
-        $sale_data = Sale::with('details.product.unitSale')
+        $sale_data = Sale::with([
+            'client',
+            'details.product.unitSale',
+            'details.saleUnit',
+            'details.productVariant'
+        ])
             ->where('deleted_at', '=', null)
             ->findOrFail($id);
 
@@ -2443,24 +2444,15 @@ class SalesController extends BaseController
 
             // check if detail has sale_unit_id Or Null
             if ($detail->sale_unit_id !== null) {
-                $unit = Unit::where('id', $detail->sale_unit_id)->first();
+                $unit = $detail->saleUnit;
             } else {
-                $product_unit_sale_id = Product::with('unitSale')
-                    ->where('id', $detail->product_id)
-                    ->first();
-
-                if ($product_unit_sale_id['unitSale']) {
-                    $unit = Unit::where('id', $product_unit_sale_id['unitSale']->id)->first();
-                }
-                $unit = null;
+                $unit = $detail['product']['unitSale'] ?? null;
             }
 
-            if ($detail->product_variant_id) {
-                $productsVariants = ProductVariant::where('product_id', $detail->product_id)
-                    ->where('id', $detail->product_variant_id)->first();
-
+            if ($detail->product_variant_id && $detail->productVariant) {
+                $productsVariants = $detail->productVariant;
                 $data['code'] = $productsVariants->code;
-                $data['name'] = '['.$productsVariants->name.']'.$detail['product']['name'];
+                $data['name'] = $detail['product']['name'].' ['.$productsVariants->name.']';
             } else {
                 $data['code'] = $detail['product']['code'];
                 $data['name'] = $detail['product']['name'];
@@ -2510,14 +2502,17 @@ class SalesController extends BaseController
             'sale' => $sale,
             'details' => $details,
             'payments' => $payments,
+            'isInlineHtml' => true,
         ])->render();
 
-        $arabic = new Arabic;
-        $p = $arabic->arIdentify($Html);
+        if (preg_match('/[\x{0600}-\x{06FF}]/u', $Html)) {
+            $arabic = new Arabic;
+            $p = $arabic->arIdentify($Html);
 
-        for ($i = count($p) - 1; $i >= 0; $i -= 2) {
-            $utf8ar = $arabic->utf8Glyphs(substr($Html, $p[$i - 1], $p[$i] - $p[$i - 1]));
-            $Html = substr_replace($Html, $utf8ar, $p[$i - 1], $p[$i] - $p[$i - 1]);
+            for ($i = count($p) - 1; $i >= 0; $i -= 2) {
+                $utf8ar = $arabic->utf8Glyphs(substr($Html, $p[$i - 1], $p[$i] - $p[$i - 1]));
+                $Html = substr_replace($Html, $utf8ar, $p[$i - 1], $p[$i] - $p[$i - 1]);
+            }
         }
 
         // When rendering as HTML in the browser, filesystem paths like public_path('images/...')
@@ -2695,7 +2690,7 @@ class SalesController extends BaseController
                     $item_product ? $data['del'] = 0 : $data['del'] = 1;
                     $data['product_variant_id'] = $detail->product_variant_id;
                     $data['code'] = $productsVariants->code;
-                    $data['name'] = '['.$productsVariants->name.']'.$detail['product']['name'];
+                    $data['name'] = $detail['product']['name'].' ['.$productsVariants->name.']';
 
                     if ($unit && $unit->operator == '/') {
                         $stock = $item_product ? $item_product->qte * $unit->operator_value : 0;
@@ -2896,7 +2891,7 @@ class SalesController extends BaseController
                     $item_product ? $data['del'] = 0 : $data['del'] = 1;
                     $data['product_variant_id'] = $detail->product_variant_id;
                     $data['code'] = $productsVariants->code;
-                    $data['name'] = '['.$productsVariants->name.']'.$detail['product']['name'];
+                    $data['name'] = $detail['product']['name'].' ['.$productsVariants->name.']';
 
                     if ($unit && $unit->operator == '/') {
                         $stock = $item_product ? $item_product->qte / $unit->operator_value : 0;
@@ -3055,7 +3050,7 @@ class SalesController extends BaseController
                 $item_product ? $data['del'] = 0 : $data['del'] = 1;
                 $data['product_variant_id'] = $detail->product_variant_id;
                 $data['code'] = $productsVariants->code;
-                $data['name'] = '['.$productsVariants->name.']'.$detail['product']['name'];
+                $data['name'] = $detail['product']['name'].' ['.$productsVariants->name.']';
 
                 if ($unit && $unit->operator == '/') {
                     $stock = $item_product ? $item_product->qte * $unit->operator_value : 0;

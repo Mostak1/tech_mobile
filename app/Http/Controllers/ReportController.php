@@ -3604,10 +3604,20 @@ class ReportController extends BaseController
             $warehouses = Warehouse::where('deleted_at', '=', null)->whereIn('id', $warehouses_id)->get(['id', 'name']);
         }
 
+        $product_ids_with_stock = product_warehouse::where('deleted_at', '=', null)
+            ->whereIn('warehouse_id', $warehouses_id)
+            ->when($request->filled('warehouse_id'), function ($query) use ($request) {
+                return $query->where('warehouse_id', $request->warehouse_id);
+            })
+            ->groupBy('product_id')
+            ->havingRaw('SUM(qte) > 0')
+            ->pluck('product_id')
+            ->toArray();
+
         $products_data = Product::with('unit', 'category', 'brand')
             ->where('deleted_at', '=', null)
-        // ->where('type', '!=', 'is_service')
-        // Search With Multiple Param
+            ->whereIn('products.id', $product_ids_with_stock)
+            // Search With Multiple Param
             ->where(function ($query) use ($request) {
                 return $query->when($request->filled('search'), function ($query) use ($request) {
                     return $query->where('products.name', 'LIKE', "%{$request->search}%")

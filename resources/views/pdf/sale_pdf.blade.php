@@ -110,15 +110,19 @@
 
     $logoSrc = null;
     if (!empty($setting['logo'])) {
-        $logoPath = public_path('images/'.$setting['logo']);
-        if (file_exists($logoPath) && is_readable($logoPath)) {
-            $logoData = @file_get_contents($logoPath);
-            if ($logoData !== false) {
-                $logoB64 = base64_encode($logoData);
-                $logoExt = strtolower(pathinfo($logoPath, PATHINFO_EXTENSION));
-                $logoMime = $logoExt === 'svg' ? 'image/svg+xml' : (in_array($logoExt, ['png','jpeg','jpg','gif','webp'], true) ? 'image/'.$logoExt : 'image/png');
-                if ($logoExt === 'jpg') { $logoMime = 'image/jpeg'; }
-                $logoSrc = 'data:'.$logoMime.';base64,'.$logoB64;
+        if (!empty($isInlineHtml) || request()->is('*sale_print_html*')) {
+            $logoSrc = asset('images/'.$setting['logo']);
+        } else {
+            $logoPath = public_path('images/'.$setting['logo']);
+            if (file_exists($logoPath) && is_readable($logoPath)) {
+                $logoData = @file_get_contents($logoPath);
+                if ($logoData !== false) {
+                    $logoB64 = base64_encode($logoData);
+                    $logoExt = strtolower(pathinfo($logoPath, PATHINFO_EXTENSION));
+                    $logoMime = $logoExt === 'svg' ? 'image/svg+xml' : (in_array($logoExt, ['png','jpeg','jpg','gif','webp'], true) ? 'image/'.$logoExt : 'image/png');
+                    if ($logoExt === 'jpg') { $logoMime = 'image/jpeg'; }
+                    $logoSrc = 'data:'.$logoMime.';base64,'.$logoB64;
+                }
             }
         }
     }
@@ -136,7 +140,7 @@
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body, body * { 
-            font-family: 'DejaVu Sans', sans-serif !important; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, 'DejaVu Sans' !important; 
         }
         body { 
             font-size: 9.5pt; 
@@ -148,29 +152,7 @@
         }
         
         .page-container {
-            padding: 45px 35px 45px 35px;
-        }
-
-        /* Top Decorative Banners */
-        .top-banner {
-            width: 100%;
-            height: 40px;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 10;
-        }
-
-        /* Bottom Decorative Banners */
-        .bottom-banner {
-            width: 100%;
-            height: 35px;
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            z-index: 10;
+            padding: 25px 35px 25px 35px;
         }
 
         /* Contacts Icon circles */
@@ -297,19 +279,6 @@
             <img src="{{ $logoSrc }}" alt="Watermark Logo">
         </div>
     @endif
-
-    <!-- Top Geometric Banner -->
-    <div class="top-banner">
-        <svg width="100%" height="40" viewBox="0 0 800 40" preserveAspectRatio="none">
-            <!-- Top Left Shapes -->
-            <polygon points="0,0 340,0 290,22 0,22" fill="#111111" />
-            <polygon points="0,25 275,25 265,30 0,30" fill="#f25822" />
-            
-            <!-- Top Right Shapes -->
-            <polygon points="500,0 800,0 800,38 540,38" fill="#111111" />
-            <polygon points="530,0 800,0 800,24 570,24" fill="#f25822" />
-        </svg>
-    </div>
 
     <div class="page-container">
         <!-- Header Section -->
@@ -438,9 +407,6 @@
                     <td style="text-align: center; font-weight: bold;">{{ sprintf('%02d', $itemNum) }}</td>
                     <td style="text-align: left; padding-left: 10px;">
                         <div style="font-weight: bold; color: #111111;">{{ $detail['name'] }}</div>
-                        @if(!empty($detail['code']))
-                            <div style="font-size: 7.5pt; color: #555555;">Code: {{ $detail['code'] }}</div>
-                        @endif
                         @if($detail['is_imei'] && !empty($detail['imei_number']))
                             <div style="font-size: 8pt; color: #d84315; font-weight: bold; margin-top: 1px;">S/N: {{ $detail['imei_number'] }}</div>
                         @endif
@@ -559,22 +525,15 @@
             </tr>
         </table>
 
-        <div style="text-align: center; margin-top: 15px; font-size: 8.5pt; font-weight: bold; color: #111111;">
-            ***Please refer to the reverse side of this invoice for our terms and conditions***
-        </div>
-    </div>
-
-    <!-- Bottom Geometric Banner -->
-    <div class="bottom-banner">
-        <svg width="100%" height="35" viewBox="0 0 800 35" preserveAspectRatio="none">
-            <!-- Bottom Left Shapes -->
-            <polygon points="0,35 300,35 250,12 0,12" fill="#f25822" />
-            <polygon points="0,10 230,10 215,0 0,0" fill="#111111" />
-
-            <!-- Bottom Right Shapes -->
-            <polygon points="440,35 800,35 800,0 480,0" fill="#111111" />
-            <polygon points="560,35 800,35 800,18 600,18" fill="#f25822" />
-        </svg>
+        @if(!empty($setting->is_invoice_footer) && !empty($setting->invoice_footer))
+            <div style="text-align: center; margin-top: 15px; font-size: 8.5pt; font-weight: bold; color: #111111;">
+                {!! nl2br(e($setting->invoice_footer)) !!}
+            </div>
+        @else
+            <div style="text-align: center; margin-top: 15px; font-size: 8.5pt; font-weight: bold; color: #111111;">
+                ***Please refer to the reverse side of this invoice for our terms and conditions***
+            </div>
+        @endif
     </div>
 </body>
 </html>

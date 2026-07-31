@@ -10,6 +10,7 @@ use App\Models\PaymentSaleReturns;
 use App\Models\Product;
 use App\Models\product_warehouse;
 use App\Models\Purchase;
+use App\Models\PurchaseDetail;
 use App\Models\PurchaseReturn;
 use App\Models\Role;
 use App\Models\Sale;
@@ -542,6 +543,57 @@ class DashboardController extends Controller
         $today_profit_numeric = $completedSalesTotal - $cogsFIFO - $expenses_total;
         // Return raw numeric value for frontend price formatting
         $data['today_profit'] = $today_profit_numeric;
+
+        // ---------------- Total Purchases Quantity ----------------
+        $total_purchases_qty = PurchaseDetail::join('purchases', 'purchase_details.purchase_id', '=', 'purchases.id')
+            ->where('purchases.deleted_at', '=', null)
+            ->whereBetween('purchases.date', [$request->from, $request->to])
+            ->where(function ($query) use ($view_records) {
+                if (! $view_records) {
+                    return $query->where('purchases.user_id', '=', Auth::user()->id);
+                }
+            })
+            ->where(function ($query) use ($warehouse_id, $array_warehouses_id) {
+                if ($warehouse_id !== 0) {
+                    return $query->where('purchases.warehouse_id', $warehouse_id);
+                } else {
+                    return $query->whereIn('purchases.warehouse_id', $array_warehouses_id);
+                }
+            })
+            ->sum('purchase_details.quantity');
+
+        // ---------------- Total Sell Quantity ----------------
+        $total_sell_qty = SaleDetail::join('sales', 'sale_details.sale_id', '=', 'sales.id')
+            ->where('sales.deleted_at', '=', null)
+            ->whereBetween('sales.date', [$request->from, $request->to])
+            ->where(function ($query) use ($view_records) {
+                if (! $view_records) {
+                    return $query->where('sales.user_id', '=', Auth::user()->id);
+                }
+            })
+            ->where(function ($query) use ($warehouse_id, $array_warehouses_id) {
+                if ($warehouse_id !== 0) {
+                    return $query->where('sales.warehouse_id', $warehouse_id);
+                } else {
+                    return $query->whereIn('sales.warehouse_id', $array_warehouses_id);
+                }
+            })
+            ->sum('sale_details.quantity');
+
+        // ---------------- Total Existing Quantity (Stock) ----------------
+        $total_existing_qty = product_warehouse::where('deleted_at', '=', null)
+            ->where(function ($query) use ($warehouse_id, $array_warehouses_id) {
+                if ($warehouse_id !== 0) {
+                    return $query->where('warehouse_id', $warehouse_id);
+                } else {
+                    return $query->whereIn('warehouse_id', $array_warehouses_id);
+                }
+            })
+            ->sum('qte');
+
+        $data['total_purchases_qty'] = (float) $total_purchases_qty;
+        $data['total_sell_qty'] = (float) $total_sell_qty;
+        $data['total_existing_qty'] = (float) $total_existing_qty;
 
         $last_sales = [];
 

@@ -161,6 +161,37 @@
           </b-col>
         </b-row>
 
+        <!-- Stat cards row 3 -->
+        <b-row v-else-if="sectionId === 'stat_cards_3'" :key="sectionId" class="mb-3 align-items-stretch dashboard-mobile-stat-grid">
+          <b-col md="4" sm="6" class="mb-3 mb-md-0">
+            <router-link to="/app/purchases/list" class="stat-card purchases-qty-card h-100">
+              <div class="stat-card-icon"><lucide-icon name="shopping-bag" /></div>
+              <div class="stat-card-content">
+                <p class="stat-card-label">{{ $t('Total_Purchases_Qty') || 'Total Purchases Quantity' }}</p>
+                <h3 class="stat-card-value">{{ formatQuantity(report_today.total_purchases_qty || 0) }}</h3>
+              </div>
+            </router-link>
+          </b-col>
+          <b-col md="4" sm="6" class="mb-3 mb-md-0">
+            <router-link to="/app/sales/list" class="stat-card sell-qty-card h-100">
+              <div class="stat-card-icon"><lucide-icon name="shopping-cart" /></div>
+              <div class="stat-card-content">
+                <p class="stat-card-label">{{ $t('Total_Sell_Qty') || 'Total Sell Quantity' }}</p>
+                <h3 class="stat-card-value">{{ formatQuantity(report_today.total_sell_qty || 0) }}</h3>
+              </div>
+            </router-link>
+          </b-col>
+          <b-col md="4" sm="6" class="mb-3 mb-md-0">
+            <router-link to="/app/reports/stock_report" class="stat-card existing-qty-card h-100">
+              <div class="stat-card-icon"><lucide-icon name="boxes" /></div>
+              <div class="stat-card-content">
+                <p class="stat-card-label">{{ $t('Total_Existing_Qty') || 'Total Existing Quantity' }}</p>
+                <h3 class="stat-card-value">{{ formatQuantity(report_today.total_existing_qty || 0) }}</h3>
+              </div>
+            </router-link>
+          </b-col>
+        </b-row>
+
           <!-- Chart: Sales & Purchases -->
         <b-row v-else-if="sectionId === 'chart_sales_purchases'" :key="sectionId" class="mb-3 align-items-stretch">
           <b-col cols="12">
@@ -536,6 +567,7 @@ export default {
         "header",
         "stat_cards_1",
         "stat_cards_2",
+        "stat_cards_3",
         "chart_sales_purchases",
         "chart_top_selling",
         "sales_by_payment_stock_value",
@@ -657,6 +689,9 @@ export default {
             return_purchases: Number(reportData.return_purchases) || 0,
             today_profit: Number(reportData.today_profit) || 0,
             today_invoices: Number(reportData.today_invoices) || 0,
+            total_purchases_qty: Number(reportData.total_purchases_qty) || 0,
+            total_sell_qty: Number(reportData.total_sell_qty) || 0,
+            total_existing_qty: Number(reportData.total_existing_qty) || 0,
           };
           this.warehouses = response.data.warehouses;
           this.stock_alerts = response.data.report_dashboard.original.stock_alert;
@@ -1004,6 +1039,11 @@ export default {
       if (f.length > dec) return `${value[0]}.${f.substr(0, dec)}`;
       while (f.length < dec) f += "0";
       return `${value[0]}.${f}`;
+    },
+
+    formatQuantity(number) {
+      const n = Number(number || 0);
+      return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
     },
 
     // Price formatting for display only (does NOT affect calculations or stored values)
@@ -1613,6 +1653,21 @@ onBeforeUnmount(() => {
 
 .revenue-card .stat-card-icon {
   background: linear-gradient(135deg, #EF4444 0%, #F87171 100%);
+  color: white;
+}
+
+.purchases-qty-card .stat-card-icon {
+  background: linear-gradient(135deg, #06b6d4 0%, #67e8f9 100%);
+  color: white;
+}
+
+.sell-qty-card .stat-card-icon {
+  background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);
+  color: white;
+}
+
+.existing-qty-card .stat-card-icon {
+  background: linear-gradient(135deg, #ec4899 0%, #f472b6 100%);
   color: white;
 }
 

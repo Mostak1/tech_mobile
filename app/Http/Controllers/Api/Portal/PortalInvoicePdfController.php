@@ -72,7 +72,7 @@ class PortalInvoicePdfController extends Controller
                 $productsVariants = ProductVariant::where('product_id', $detail->product_id)
                     ->where('id', $detail->product_variant_id)->first();
                 $data['code'] = $productsVariants ? $productsVariants->code : '';
-                $data['name'] = ($productsVariants ? '[' . $productsVariants->name . ']' : '') . (optional($detail->product)->name ?? '');
+                $data['name'] = (optional($detail->product)->name ?? '') . ($productsVariants ? ' [' . $productsVariants->name . ']' : '');
             } else {
                 $data['code'] = optional($detail->product)->code ?? '';
                 $data['name'] = optional($detail->product)->name ?? '';

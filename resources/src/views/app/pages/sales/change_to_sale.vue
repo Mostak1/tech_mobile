@@ -1401,8 +1401,13 @@ export default {
               this.$t("Success")
             );
 
-             this.SubmitProcessing = false;
-            this.$router.push({ name: "index_sales" });
+            this.SubmitProcessing = false;
+            const newSaleId = response.data ? (response.data.id || (response.data.order && response.data.order.id)) : null;
+            if (newSaleId) {
+              this.autoPrintSaleHtml(newSaleId);
+            } else {
+              this.$router.push({ name: "index_sales" });
+            }
           })
           .catch(error => {
             NProgress.done();
@@ -1414,6 +1419,57 @@ export default {
             this.SubmitProcessing = false;
           });
       }
+    },
+
+    autoPrintSaleHtml(id) {
+      const printWindow = window.open('', '_blank', 'height=750,width=850');
+      if (!printWindow) {
+        this.$router.push({ name: "index_sales" });
+        return;
+      }
+
+      axios
+        .get(`sale_print_html/${id}`)
+        .then(response => {
+          if (printWindow && !printWindow.closed) {
+            try {
+              printWindow.document.open();
+              printWindow.document.write(response.data);
+              printWindow.document.close();
+
+              let navigated = false;
+              const navigateAway = () => {
+                if (!navigated) {
+                  navigated = true;
+                  try { window.removeEventListener('focus', navigateAway); } catch (e) {}
+                  try { if (printWindow && !printWindow.closed) printWindow.close(); } catch (e) {}
+                  this.$router.push({ name: "index_sales" });
+                }
+              };
+
+              try { printWindow.onafterprint = navigateAway; } catch (e) {}
+              try { window.addEventListener('focus', navigateAway); } catch (e) {}
+
+              setTimeout(() => {
+                try { printWindow.focus(); } catch (e) {}
+                try { printWindow.print(); } catch (e) { navigateAway(); }
+              }, 300);
+            } catch (e) {
+              console.error('Render error:', e);
+              if (printWindow && !printWindow.closed) printWindow.close();
+              this.$router.push({ name: "index_sales" });
+            }
+          } else {
+            this.$router.push({ name: "index_sales" });
+          }
+        })
+        .catch(error => {
+          console.error('Print error:', error);
+          if (printWindow && !printWindow.closed) {
+            printWindow.close();
+          }
+          this.$router.push({ name: "index_sales" });
+        });
     },
 
     //-------------------------------- Get Last Detail Id -------------------------\\

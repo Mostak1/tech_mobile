@@ -6766,7 +6766,7 @@ export default {
                   printStartAt = Date.now();
                 } catch (e) {}
                 try { win.print(); } catch (_) {}
-              }, 700);
+              }, 150);
             } catch (e) {
               try { win.__setError && win.__setError('Failed to load invoice'); } catch (_) {}
             }

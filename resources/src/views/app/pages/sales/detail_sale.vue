@@ -538,58 +538,45 @@ export default {
 
     //------------------------------ Print -------------------------\\
     print() {
-      // Fetch HTML from sale_pdf.blade.php template and print it
+      // Fetch HTML from sale_pdf.blade.php template and print it via hidden iframe
       NProgress.start();
       let id = this.$route.params.id;
-
-      // Open print window IMMEDIATELY on click event to bypass browser popup blockers
-      const printWindow = window.open('', '_blank', 'width=900,height=750');
-      if (printWindow) {
-        try {
-          printWindow.document.open();
-          printWindow.document.write('<!DOCTYPE html><html><head><title>Print Invoice</title></head><body style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;background:#f8fafc;"><div style="text-align:center;"><div style="font-size:18px;font-weight:600;color:#334155;margin-bottom:8px;">Preparing Invoice...</div><div style="font-size:13px;color:#64748b;">Please wait while the printable invoice is loaded.</div></div></body></html>');
-          printWindow.document.close();
-        } catch (e) {}
-      }
 
       axios
         .get(`sale_print_html/${id}`)
         .then(response => {
           NProgress.done();
 
-          if (printWindow && !printWindow.closed) {
-            try {
-              printWindow.document.open();
-              printWindow.document.write(response.data);
-              printWindow.document.close();
-
-              const triggerPrint = () => {
-                try {
-                  printWindow.focus();
-                  printWindow.print();
-                } catch (e) {
-                  console.error('Print trigger error:', e);
-                }
-              };
-
-              if (printWindow.document.readyState === 'complete') {
-                setTimeout(triggerPrint, 100);
-              } else {
-                printWindow.onload = () => {
-                  setTimeout(triggerPrint, 100);
-                };
-              }
-            } catch (e) {
-              console.error('Render error:', e);
-            }
+          let iframe = document.getElementById('print_html_iframe');
+          if (!iframe) {
+            iframe = document.createElement('iframe');
+            iframe.id = 'print_html_iframe';
+            iframe.style.position = 'fixed';
+            iframe.style.right = '0';
+            iframe.style.bottom = '0';
+            iframe.style.width = '0';
+            iframe.style.height = '0';
+            iframe.style.border = '0';
+            document.body.appendChild(iframe);
           }
+
+          const doc = iframe.contentWindow.document;
+          doc.open();
+          doc.write(response.data);
+          doc.close();
+
+          setTimeout(() => {
+            try {
+              iframe.contentWindow.focus();
+              iframe.contentWindow.print();
+            } catch (e) {
+              console.error('Print trigger error:', e);
+            }
+          }, 50);
         })
         .catch(error => {
           NProgress.done();
           console.error('Print error:', error);
-          if (printWindow && !printWindow.closed) {
-            printWindow.close();
-          }
           this.makeToast('danger', this.$t('PrintError') || 'Print failed', this.$t('Failed'));
         });
     },
