@@ -2107,9 +2107,6 @@ export default {
       }
 
       this.details.push(this.product);
-      if(this.product.is_imei){
-        this.Modal_Updat_Detail(this.product);
-      }
     },
 
     //----------------------------------------- Batch handling -------------------------\\
