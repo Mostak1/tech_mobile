@@ -102,17 +102,56 @@ Route::get('/clear-config', function () {
     ]);
 });
 
+Route::get('/run-migration', function () {
+    try {
+        \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
+        $output = \Illuminate\Support\Facades\Artisan::output();
+        return response()->json([
+            'status' => true,
+            'message' => 'Database migration executed successfully!',
+            'output' => $output,
+        ]);
+    } catch (\Throwable $e) {
+        return response()->json([
+            'status' => false,
+            'message' => 'Migration failed: ' . $e->getMessage(),
+        ], 500);
+    }
+});
+
+Route::get('/migrate', function () {
+    try {
+        \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
+        $output = \Illuminate\Support\Facades\Artisan::output();
+        return response()->json([
+            'status' => true,
+            'message' => 'Database migration executed successfully!',
+            'output' => $output,
+        ]);
+    } catch (\Throwable $e) {
+        return response()->json([
+            'status' => false,
+            'message' => 'Migration failed: ' . $e->getMessage(),
+        ], 500);
+    }
+});
+
 Route::get('/view-logs', function () {
-    $logFile = storage_path('logs/laravel.log');
-    if (! file_exists($logFile)) {
-        return response('No laravel.log file found at: '.$logFile, 200)
+    $logDir = storage_path('logs');
+    $logFiles = glob($logDir . '/laravel*.log');
+    if (empty($logFiles)) {
+        return response('No log files found in: ' . $logDir, 200)
             ->header('Content-Type', 'text/plain');
     }
+    usort($logFiles, function ($a, $b) {
+        return filemtime($b) - filemtime($a);
+    });
+    $latestFile = $logFiles[0];
+    $lines = file($latestFile);
+    $lastLines = array_slice($lines, -200);
 
-    $lines = file($logFile);
-    $lastLines = array_slice($lines, -150);
-
-    return response(implode('', $lastLines), 200)
+    $header = "=== Log File: " . basename($latestFile) . " (Timezone: " . config('app.timezone') . ") ===\n\n";
+    return response($header . implode('', $lastLines), 200)
         ->header('Content-Type', 'text/plain');
 });
 

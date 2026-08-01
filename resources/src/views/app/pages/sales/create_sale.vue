@@ -2677,7 +2677,9 @@ export default {
               NProgress.done();
               this.paymentProcessing = false;
 
-              const newSaleId = response.data ? (response.data.id || (response.data.order && response.data.order.id)) : null;
+              const newSaleId = response.data
+                ? (response.data.sale_id || response.data.id || (response.data.order && response.data.order.id))
+                : null;
               if (newSaleId && this.shouldPrintAfterSave) {
                 this.autoPrintSaleHtml(newSaleId);
               } else {
@@ -2691,6 +2693,10 @@ export default {
             .catch(error => {
               NProgress.done();
               this.paymentProcessing = false;
+              if (this.pendingPrintWindow && !this.pendingPrintWindow.closed) {
+                this.pendingPrintWindow.close();
+              }
+              this.pendingPrintWindow = null;
               if (error.response && error.response.data && error.response.data.message) {
                 this.makeToast("danger", error.response.data.message, this.$t("Failed"));
               } else {

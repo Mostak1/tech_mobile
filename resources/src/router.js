@@ -2484,6 +2484,33 @@ const baseRoutes = [
                             )
                     },
                     {
+                        name: "purchased_products_report",
+                        path: "purchased_products_report",
+                        component: () =>
+                            import(
+                                /* webpackChunkName: "purchased_products_report" */
+                                "./views/app/pages/reports/purchased_products_report"
+                            )
+                    },
+                    {
+                        name: "supplier_purchases_report",
+                        path: "supplier_purchases_report",
+                        component: () =>
+                            import(
+                                /* webpackChunkName: "supplier_purchases_report" */
+                                "./views/app/pages/reports/supplier_purchases_report"
+                            )
+                    },
+                    {
+                        name: "supplier_purchases_detail",
+                        path: "supplier_purchases_report/detail/:id",
+                        component: () =>
+                            import(
+                                /* webpackChunkName: "supplier_purchases_detail" */
+                                "./views/app/pages/reports/supplier_purchases_detail"
+                            )
+                    },
+                    {
                         name: "detail_stock_report",
                         path: "detail_stock/:id",
                         component: () =>

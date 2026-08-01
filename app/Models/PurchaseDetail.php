@@ -43,4 +43,9 @@ class PurchaseDetail extends Model
     {
         return $this->hasMany(ProductSerialNumber::class, 'purchase_line_id');
     }
+
+    public function productVariant()
+    {
+        return $this->belongsTo('App\Models\ProductVariant', 'product_variant_id');
+    }
 }

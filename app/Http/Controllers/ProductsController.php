@@ -17,6 +17,7 @@ use App\Models\ProductImage;
 use App\Models\ProductSerialNumber;
 use App\Models\product_warehouse;
 use App\Models\ProductVariant;
+use App\Models\Setting;
 use App\Models\Unit;
 use App\Models\User;
 use App\Models\UserWarehouse;
@@ -2554,6 +2555,8 @@ class ProductsController extends BaseController
             ->orderBy('code')
             ->get(['id', 'warehouse_id', 'code', 'name']);
 
+        $settings = Setting::whereNull('deleted_at')->first();
+
         return response()->json([
             'categories' => $categories,
             'subcategories' => $subcategories,
@@ -2561,6 +2564,13 @@ class ProductsController extends BaseController
             'units' => $units,
             'warehouses' => $warehouses,
             'warehouse_locations' => $warehouse_locations,
+            'default_category_id' => $settings ? $settings->default_category_id : null,
+            'default_product_type' => $settings ? ($settings->default_product_type ?: 'is_single') : 'is_single',
+            'default_unit_id' => $settings ? $settings->default_unit_id : null,
+            'default_unit_sale_id' => $settings ? $settings->default_unit_sale_id : null,
+            'default_unit_purchase_id' => $settings ? $settings->default_unit_purchase_id : null,
+            'default_is_imei' => $settings ? (bool)$settings->default_is_imei : false,
+            'default_enable_serial_tracking' => $settings ? (bool)$settings->default_enable_serial_tracking : false,
         ]);
 
     }

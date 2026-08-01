@@ -3683,6 +3683,157 @@ class ReportController extends BaseController
 
     }
 
+    // ----------------- Purchased Products Report -----------------------\\
+    public function purchased_products_report(Request $request)
+    {
+        $this->authorizeForUser($request->user('api'), 'view', Purchase::class);
+
+        $perPage = $request->limit ?? 10;
+        $pageStart = \Request::get('page', 1);
+        $offSet = ($pageStart * $perPage) - $perPage;
+        $order = $request->SortField ?? 'id';
+        $dir = $request->SortType ?? 'desc';
+        $search = $request->search ?? '';
+        $warehouse_id = $request->warehouse_id ?? null;
+
+        // User warehouses
+        $user_auth = auth()->user();
+        if ($user_auth->is_all_warehouses) {
+            $warehouses = Warehouse::where('deleted_at', '=', null)->get(['id', 'name']);
+            $warehouses_id = Warehouse::where('deleted_at', '=', null)->pluck('id')->toArray();
+        } else {
+            $warehouses_id = UserWarehouse::where('user_id', $user_auth->id)->pluck('warehouse_id')->toArray();
+            $warehouses = Warehouse::where('deleted_at', '=', null)->whereIn('id', $warehouses_id)->get(['id', 'name']);
+        }
+
+        $active_warehouse_ids = $warehouse_id ? [$warehouse_id] : $warehouses_id;
+
+        // Get product_ids that have been purchased at least once
+        $purchased_product_ids = PurchaseDetail::whereHas('purchase', function ($q) use ($active_warehouse_ids) {
+                $q->where('deleted_at', '=', null)
+                  ->whereIn('warehouse_id', $active_warehouse_ids);
+            })
+            ->pluck('product_id')
+            ->unique()
+            ->toArray();
+
+        $products_query = Product::with(['unit', 'category'])
+            ->where('deleted_at', '=', null)
+            ->whereIn('id', $purchased_product_ids)
+            ->where(function ($query) use ($search) {
+                if ($search) {
+                    $query->where('products.name', 'LIKE', "%{$search}%")
+                        ->orWhere('products.code', 'LIKE', "%{$search}%")
+                        ->orWhere(function ($q) use ($search) {
+                            $q->whereHas('category', function ($catQ) use ($search) {
+                                $catQ->where('name', 'LIKE', "%{$search}%");
+                            });
+                        });
+                }
+            });
+
+        $totalRows = $products_query->count();
+        if ($perPage == '-1') {
+            $perPage = $totalRows > 0 ? $totalRows : 10;
+        }
+
+        $products = $products_query->offset($offSet)
+            ->limit($perPage)
+            ->orderBy($order, $dir)
+            ->get();
+
+        $report_data = [];
+
+        foreach ($products as $product) {
+            // Total purchased qty for main product
+            $purchased_qty = PurchaseDetail::where('product_id', $product->id)
+                ->whereHas('purchase', function ($q) use ($active_warehouse_ids) {
+                    $q->where('deleted_at', '=', null)->whereIn('warehouse_id', $active_warehouse_ids);
+                })->sum('quantity');
+
+            // Total sold qty for main product
+            $sold_qty = SaleDetail::where('product_id', $product->id)
+                ->whereHas('sale', function ($q) use ($active_warehouse_ids) {
+                    $q->where('deleted_at', '=', null)->whereIn('warehouse_id', $active_warehouse_ids);
+                })->sum('quantity');
+
+            // Remaining stock qty for main product
+            $remaining_qty = product_warehouse::where('product_id', $product->id)
+                ->where('deleted_at', '=', null)
+                ->whereIn('warehouse_id', $active_warehouse_ids)
+                ->sum('qte');
+
+            $unit_name = $product->unit ? $product->unit->ShortName : '';
+
+            // Variations Breakdown
+            $variations = [];
+            if ($product->is_variant) {
+                $product_variants = ProductVariant::where('product_id', $product->id)
+                    ->where('deleted_at', '=', null)
+                    ->get();
+
+                foreach ($product_variants as $pv) {
+                    $v_purchased = PurchaseDetail::where('product_id', $product->id)
+                        ->where('product_variant_id', $pv->id)
+                        ->whereHas('purchase', function ($q) use ($active_warehouse_ids) {
+                            $q->where('deleted_at', '=', null)->whereIn('warehouse_id', $active_warehouse_ids);
+                        })->sum('quantity');
+
+                    $v_sold = SaleDetail::where('product_id', $product->id)
+                        ->where('product_variant_id', $pv->id)
+                        ->whereHas('sale', function ($q) use ($active_warehouse_ids) {
+                            $q->where('deleted_at', '=', null)->whereIn('warehouse_id', $active_warehouse_ids);
+                        })->sum('quantity');
+
+                    $v_remaining = product_warehouse::where('product_id', $product->id)
+                        ->where('product_variant_id', $pv->id)
+                        ->where('deleted_at', '=', null)
+                        ->whereIn('warehouse_id', $active_warehouse_ids)
+                        ->sum('qte');
+
+                    $variations[] = [
+                        'id' => $pv->id,
+                        'variant_name' => $pv->name,
+                        'code' => $pv->code,
+                        'purchased_qty' => (float)$v_purchased,
+                        'sold_qty' => (float)$v_sold,
+                        'remaining_qty' => (float)$v_remaining,
+                        'unit' => $unit_name,
+                    ];
+                }
+            } else {
+                $variations[] = [
+                    'id' => null,
+                    'variant_name' => 'Standard Product',
+                    'code' => $product->code,
+                    'purchased_qty' => (float)$purchased_qty,
+                    'sold_qty' => (float)$sold_qty,
+                    'remaining_qty' => (float)$remaining_qty,
+                    'unit' => $unit_name,
+                ];
+            }
+
+            $report_data[] = [
+                'id' => $product->id,
+                'code' => $product->code,
+                'name' => $product->name,
+                'category' => $product->category ? $product->category->name : '',
+                'is_variant' => (bool)$product->is_variant,
+                'purchased_qty' => (float)$purchased_qty,
+                'sold_qty' => (float)$sold_qty,
+                'remaining_qty' => (float)$remaining_qty,
+                'unit' => $unit_name,
+                'variations' => $variations,
+            ];
+        }
+
+        return response()->json([
+            'report' => $report_data,
+            'totalRows' => $totalRows,
+            'warehouses' => $warehouses,
+        ]);
+    }
+
     // -------------------- Get Sales By product -------------\\
 
     public function get_sales_by_product(Request $request)
@@ -9621,5 +9772,174 @@ public function draftInvoices(Request $request)
         ]);
     }
 
+    // ----------------- Supplier Purchases Report -----------------------\\
+    public function supplier_purchases_report(Request $request)
+    {
+        $this->authorizeForUser($request->user('api'), 'view', Purchase::class);
 
+        $perPage = $request->limit ?? 10;
+        $pageStart = \Request::get('page', 1);
+        $offSet = ($pageStart * $perPage) - $perPage;
+        $order = $request->SortField ?? 'id';
+        $dir = $request->SortType ?? 'desc';
+        $search = $request->search ?? '';
+        $warehouse_id = $request->warehouse_id ?? null;
+
+        // User warehouses
+        $user_auth = auth()->user();
+        if ($user_auth->is_all_warehouses) {
+            $warehouses = Warehouse::whereNull('deleted_at')->get(['id', 'name']);
+            $warehouses_id = Warehouse::whereNull('deleted_at')->pluck('id')->toArray();
+        } else {
+            $warehouses_id = UserWarehouse::where('user_id', $user_auth->id)->pluck('warehouse_id')->toArray();
+            $warehouses = Warehouse::whereNull('deleted_at')->whereIn('id', $warehouses_id)->get(['id', 'name']);
+        }
+
+        $active_warehouse_ids = $warehouse_id ? [$warehouse_id] : $warehouses_id;
+
+        // Get suppliers who have purchases
+        $providers_query = Provider::whereNull('deleted_at')
+            ->whereHas('purchases', function ($q) use ($active_warehouse_ids) {
+                $q->whereNull('deleted_at')->whereIn('warehouse_id', $active_warehouse_ids);
+            })
+            ->where(function ($query) use ($search) {
+                if ($search) {
+                    $query->where('name', 'LIKE', "%{$search}%")
+                        ->orWhere('code', 'LIKE', "%{$search}%")
+                        ->orWhere('phone', 'LIKE', "%{$search}%")
+                        ->orWhere('email', 'LIKE', "%{$search}%");
+                }
+            });
+
+        $totalRows = $providers_query->count();
+        if ($perPage == '-1') {
+            $perPage = $totalRows > 0 ? $totalRows : 10;
+        }
+
+        $suppliers = $providers_query->offset($offSet)
+            ->limit($perPage)
+            ->orderBy($order, $dir)
+            ->get();
+
+        $report_data = [];
+
+        foreach ($suppliers as $supplier) {
+            // Purchases count & total amount for this supplier
+            $purchases = Purchase::where('provider_id', $supplier->id)
+                ->whereNull('deleted_at')
+                ->whereIn('warehouse_id', $active_warehouse_ids);
+
+            $total_purchases_count = (clone $purchases)->count();
+            $total_purchases_amount = (clone $purchases)->sum('GrandTotal');
+
+            // Total quantity purchased from this supplier
+            $total_quantity = PurchaseDetail::whereHas('purchase', function ($q) use ($supplier, $active_warehouse_ids) {
+                $q->where('provider_id', $supplier->id)
+                  ->whereNull('deleted_at')
+                  ->whereIn('warehouse_id', $active_warehouse_ids);
+            })->sum('quantity');
+
+            $report_data[] = [
+                'id' => $supplier->id,
+                'supplier_name' => $supplier->name,
+                'supplier_code' => $supplier->code,
+                'supplier_phone' => $supplier->phone,
+                'supplier_address' => $supplier->adresse ?? '',
+                'supplier_email' => $supplier->email ?? '',
+                'total_purchases_count' => $total_purchases_count,
+                'total_purchases_amount' => $total_purchases_amount,
+                'total_quantity' => $total_quantity,
+            ];
+        }
+
+        return response()->json([
+            'reports' => $report_data,
+            'totalRows' => $totalRows,
+            'warehouses' => $warehouses,
+        ]);
+    }
+
+    // ----------------- Supplier Purchases Detail -----------------------\\
+    public function supplier_purchases_detail(Request $request, $id)
+    {
+        $this->authorizeForUser($request->user('api'), 'view', Purchase::class);
+
+        $supplier = Provider::whereNull('deleted_at')->find($id);
+        if (!$supplier) {
+            return response()->json(['message' => 'Supplier not found'], 404);
+        }
+
+        $warehouse_id = $request->warehouse_id ?? null;
+        $search = $request->search ?? '';
+
+        // User warehouses
+        $user_auth = auth()->user();
+        if ($user_auth->is_all_warehouses) {
+            $warehouses_id = Warehouse::whereNull('deleted_at')->pluck('id')->toArray();
+        } else {
+            $warehouses_id = UserWarehouse::where('user_id', $user_auth->id)->pluck('warehouse_id')->toArray();
+        }
+        $active_warehouse_ids = $warehouse_id ? [$warehouse_id] : $warehouses_id;
+
+        // Query purchased items for this supplier
+        $details_query = PurchaseDetail::with(['purchase', 'product', 'productVariant'])
+            ->whereHas('purchase', function ($q) use ($id, $active_warehouse_ids) {
+                $q->where('provider_id', $id)
+                  ->whereNull('deleted_at')
+                  ->whereIn('warehouse_id', $active_warehouse_ids);
+            })
+            ->where(function ($q) use ($search) {
+                if ($search) {
+                    $q->whereHas('product', function ($pQ) use ($search) {
+                        $pQ->where('name', 'LIKE', "%{$search}%")
+                           ->orWhere('code', 'LIKE', "%{$search}%");
+                    });
+                }
+            });
+
+        $details = $details_query->orderBy('id', 'desc')->get();
+
+        $items = [];
+        $total_qty = 0;
+        $total_amount = 0;
+
+        foreach ($details as $detail) {
+            $product_name = $detail->product ? $detail->product->name : 'N/A';
+            if ($detail->productVariant) {
+                $product_name .= ' [' . $detail->productVariant->name . ']';
+            }
+
+            $qty = (float) $detail->quantity;
+            $amount = (float) ($detail->total ?? ($detail->cost * $qty));
+            $raw_date = $detail->purchase ? ($detail->purchase->date ?? $detail->purchase->created_at) : null;
+            $formatted_date = $raw_date ? Carbon::parse($raw_date)->format('d M, Y g:i A') : 'N/A';
+
+            $total_qty += $qty;
+            $total_amount += $amount;
+
+            $items[] = [
+                'id' => $detail->id,
+                'purchase_id' => $detail->purchase_id,
+                'ref' => $detail->purchase ? $detail->purchase->Ref : '',
+                'product_name' => $product_name,
+                'purchases_qty' => $qty,
+                'purchases_amount' => $amount,
+                'purchases_date' => $formatted_date,
+            ];
+        }
+
+        return response()->json([
+            'supplier' => [
+                'id' => $supplier->id,
+                'name' => $supplier->name,
+                'phone' => $supplier->phone,
+                'address' => $supplier->adresse ?? '',
+                'email' => $supplier->email ?? '',
+                'code' => $supplier->code,
+            ],
+            'details' => $items,
+            'total_qty' => $total_qty,
+            'total_amount' => $total_amount,
+        ]);
+    }
 }

@@ -384,6 +384,18 @@
                   <span>{{ $t('Import_Purchases') }}</span>
                 </router-link>
               </li>
+              <li class="submenu-item" v-if="currentUserPermissions && (currentUserPermissions.includes('Purchases_view') || currentUserPermissions.includes('Purchases_add'))">
+                <router-link to="/app/reports/purchased_products_report" class="submenu-link">
+                  <lucide-icon class="submenu-icon" name="shopping-cart" />
+                  <span>{{ $t('Purchased_Products_Report') || 'Purchased Products Report' }}</span>
+                </router-link>
+              </li>
+              <li class="submenu-item" v-if="currentUserPermissions && (currentUserPermissions.includes('Purchases_view') || currentUserPermissions.includes('Purchases_add'))">
+                <router-link to="/app/reports/supplier_purchases_report" class="submenu-link">
+                  <lucide-icon class="submenu-icon" name="truck" />
+                  <span>{{ $t('Supplier_Purchases_Report') || 'Supplier Purchases Report' }}</span>
+                </router-link>
+              </li>
             </ul>
           </li>
 

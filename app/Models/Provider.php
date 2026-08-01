@@ -26,4 +26,12 @@ class Provider extends Model
     {
         return $this->morphMany(CustomFieldValue::class, 'entity', 'entity_type', 'entity_id');
     }
+
+    /**
+     * Get purchases for this provider
+     */
+    public function purchases()
+    {
+        return $this->hasMany(Purchase::class, 'provider_id');
+    }
 }

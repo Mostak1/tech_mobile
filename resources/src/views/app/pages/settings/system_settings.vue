@@ -449,6 +449,18 @@
                       />
                     </b-form-group>
                   </b-col>
+
+                  <!-- Default Product Category -->
+                  <b-col lg="6" md="6" sm="12" class="mb-3">
+                    <b-form-group :label="$t('DefaultProductCategory') || 'Default Product Category'">
+                      <v-select
+                        v-model="setting.default_category_id"
+                        :reduce="label => label.value"
+                        :placeholder="$t('Choose_Category') || 'Choose Default Category'"
+                        :options="categories.map(c => ({label: c.name, value: c.id}))"
+                      />
+                    </b-form-group>
+                  </b-col>
                   
                       <!-- Time Zone -->
                       <b-col lg="6" md="6" sm="12" class="mb-3">
@@ -603,6 +615,99 @@
                         :placeholder="$t('Choose_Payment_Method')"
                         :options="payment_methods.map(pm => ({ label: pm.name, value: pm.id }))"
                       />
+                    </b-form-group>
+                  </b-col>
+
+                   <!-- Default Product Category -->
+                  <b-col lg="6" md="6" sm="12" class="mb-3">
+                    <b-form-group label="Default Product Category">
+                      <v-select
+                        v-model="setting.default_category_id"
+                        :reduce="label => label.value"
+                        placeholder="Choose Default Category"
+                        :options="categories.map(c => ({label: c.name, value: c.id}))"
+                      />
+                    </b-form-group>
+                  </b-col>
+
+                   <!-- Default Product Type -->
+                  <b-col lg="6" md="6" sm="12" class="mb-3">
+                    <b-form-group label="Default Product Type">
+                      <v-select
+                        v-model="setting.default_product_type"
+                        :reduce="label => label.value"
+                        placeholder="Choose Default Product Type"
+                        :options="[
+                          {label: 'Standard Product (Single)', value: 'is_single'},
+                          {label: 'Variable Product (Variant)', value: 'is_variant'},
+                          {label: 'Service Product', value: 'is_service'},
+                          {label: 'Combo Product', value: 'is_combo'},
+                        ]"
+                      />
+                    </b-form-group>
+                  </b-col>
+
+                   <!-- Default Product Unit -->
+                  <b-col lg="6" md="6" sm="12" class="mb-3">
+                    <b-form-group label="Default Product Unit">
+                      <v-select
+                        v-model="setting.default_unit_id"
+                        :reduce="label => label.value"
+                        placeholder="Choose Default Unit"
+                        :options="units.map(u => ({label: u.name + (u.ShortName ? ' (' + u.ShortName + ')' : ''), value: u.id}))"
+                      />
+                    </b-form-group>
+                  </b-col>
+
+                   <!-- Default Sale Unit -->
+                  <b-col lg="6" md="6" sm="12" class="mb-3">
+                    <b-form-group label="Default Sale Unit">
+                      <v-select
+                        v-model="setting.default_unit_sale_id"
+                        :reduce="label => label.value"
+                        placeholder="Choose Default Sale Unit"
+                        :options="units.map(u => ({label: u.name + (u.ShortName ? ' (' + u.ShortName + ')' : ''), value: u.id}))"
+                      />
+                    </b-form-group>
+                  </b-col>
+
+                   <!-- Default Purchase Unit -->
+                  <b-col lg="6" md="6" sm="12" class="mb-3">
+                    <b-form-group label="Default Purchase Unit">
+                      <v-select
+                        v-model="setting.default_unit_purchase_id"
+                        :reduce="label => label.value"
+                        placeholder="Choose Default Purchase Unit"
+                        :options="units.map(u => ({label: u.name + (u.ShortName ? ' (' + u.ShortName + ')' : ''), value: u.id}))"
+                      />
+                    </b-form-group>
+                  </b-col>
+
+                   <!-- Default Product Has IMEI/Serial Number -->
+                  <b-col lg="6" md="6" sm="12" class="mb-3">
+                    <b-form-group>
+                      <b-form-checkbox
+                        v-model="setting.default_is_imei"
+                        :unchecked-value="false"
+                        :checked-value="true"
+                        switch
+                      >
+                        Default: Product Has IMEI / Serial Number
+                      </b-form-checkbox>
+                    </b-form-group>
+                  </b-col>
+
+                   <!-- Default Enable Serial Number Tracking -->
+                  <b-col lg="6" md="6" sm="12" class="mb-3">
+                    <b-form-group>
+                      <b-form-checkbox
+                        v-model="setting.default_enable_serial_tracking"
+                        :unchecked-value="false"
+                        :checked-value="true"
+                        switch
+                      >
+                        Default: Enable Advanced Serial / IMEI Tracking
+                      </b-form-checkbox>
                     </b-form-group>
                   </b-col>
 
@@ -3447,6 +3552,8 @@ export default {
       sms_gateway: [],
       accounts: [],
       payment_methods: [],
+      categories: [],
+      units: [],
       zones_array:[],
       languages:[],
       sidebarLayoutOptions: [
@@ -3531,6 +3638,13 @@ export default {
         footer:"",
         developed_by:"",
         default_language:"",
+        default_category_id: null,
+        default_product_type: 'is_single',
+        default_unit_id: null,
+        default_unit_sale_id: null,
+        default_unit_purchase_id: null,
+        default_is_imei: false,
+        default_enable_serial_tracking: false,
         date_format: 'YYYY-MM-DD',
         // Optional price format for frontend display
         price_format: "",
@@ -4370,6 +4484,13 @@ export default {
       self.data.append("footer", self.setting.footer);
       self.data.append("developed_by", self.setting.developed_by);
       self.data.append("default_language", self.setting.default_language);
+      self.data.append("default_category_id", self.setting.default_category_id || "");
+      self.data.append("default_product_type", self.setting.default_product_type || "is_single");
+      self.data.append("default_unit_id", self.setting.default_unit_id || "");
+      self.data.append("default_unit_sale_id", self.setting.default_unit_sale_id || "");
+      self.data.append("default_unit_purchase_id", self.setting.default_unit_purchase_id || "");
+      self.data.append("default_is_imei", self.setting.default_is_imei ? 1 : 0);
+      self.data.append("default_enable_serial_tracking", self.setting.default_enable_serial_tracking ? 1 : 0);
       self.data.append("sms_gateway", self.setting.sms_gateway);
       self.data.append("is_invoice_footer", self.setting.is_invoice_footer);
       self.data.append("invoice_footer", self.setting.invoice_footer);
@@ -5224,7 +5345,9 @@ export default {
         .get("get_Settings_data_api", { params: { include_secrets: 1 } })
         .then(response => {
           // Merge to preserve default keys/reactivity for newly added settings fields
-          this.setting         = { ...this.setting, ...(response.data.settings || {}) };
+          this.setting = { ...this.setting, ...(response.data.settings || {}) };
+          this.categories = response.data.categories || [];
+          this.units = response.data.units || [];
           this.syncDashboardSectionOrderList();
           // Update date_format in Vuex store and localStorage cache
           try {

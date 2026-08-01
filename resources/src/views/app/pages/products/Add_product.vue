@@ -18,6 +18,14 @@
             </p>
           </div>
           <div class="page-hero__actions">
+            <b-button
+              :variant="showOptionalFields ? 'outline-info' : 'info'"
+              class="hero-btn me-2"
+              @click="toggleOptionalFields"
+            >
+              <lucide-icon :name="showOptionalFields ? 'eye-off' : 'eye'" />
+              <span>{{ showOptionalFields ? ($t('HideOptionalFields') || 'Hide Optional Fields') : ($t('ShowOptionalFields') || 'Show Optional Fields') }}</span>
+            </b-button>
             <b-button variant="outline-secondary" class="hero-btn" @click="$router.back()">
               <lucide-icon name="arrow-left" /> {{ $t('Cancel') || 'Cancel' }}
             </b-button>
@@ -343,6 +351,24 @@
           <b-col lg="8" class="mb-4 product-create-main">
             <!-- ========== SECTION 1: BASIC INFORMATION ========== -->
             <div class="form-section" id="section-basic">
+              <div class="d-flex justify-content-between align-items-center mb-3 p-2 px-3 bg-light rounded border">
+                <div class="d-flex align-items-center">
+                  <lucide-icon name="sliders" class="me-2 text-primary" />
+                  <span class="font-weight-bold me-2">{{ $t('FormMode') || 'Form Mode:' }}</span>
+                  <b-badge :variant="showOptionalFields ? 'info' : 'primary'">
+                    {{ showOptionalFields ? ($t('FullForm') || 'Full Form (All Fields Shown)') : ($t('QuickForm') || 'Quick Form (Optional Fields Hidden)') }}
+                  </b-badge>
+                </div>
+                <b-button
+                  :variant="showOptionalFields ? 'outline-secondary' : 'primary'"
+                  size="sm"
+                  @click="toggleOptionalFields"
+                >
+                  <lucide-icon :name="showOptionalFields ? 'eye-off' : 'eye'" class="me-1" />
+                  {{ showOptionalFields ? ($t('HideOptionalFields') || 'Hide Optional Fields') : ($t('ShowOptionalFields') || 'Show Optional Fields') }}
+                </b-button>
+              </div>
+
               <div class="section-header">
                 <lucide-icon class="section-icon" name="file" />
                 <h4 class="section-title">{{ $t('BasicInformation') }}</h4>
@@ -385,7 +411,7 @@
                   </b-col>
 
                   <!-- Barcode Symbology -->
-                  <b-col md="6" class="mb-3">
+                  <b-col md="6" class="mb-3" v-show="showOptionalFields">
                     <validation-provider name="Barcode Symbology" :rules="{ required: true}">
                       <b-form-group slot-scope="{ valid, errors }">
                         <template #label>
@@ -520,7 +546,7 @@
                   </b-col>
 
                   <!-- Subcategories (multi-select; first = primary) -->
-                  <b-col md="6" class="mb-3">
+                  <b-col md="6" class="mb-3" v-show="showOptionalFields">
                     <b-form-group>
                       <template #label>
                         <span class="label-with-help">
@@ -589,7 +615,7 @@
                   </b-col>
 
                   <!-- Description -->
-                  <b-col md="12" class="mb-3">
+                  <b-col md="12" class="mb-3" v-show="showOptionalFields">
                     <b-form-group>
                       <template #label>
                         <span class="label-with-help">
@@ -619,7 +645,7 @@
             </div>
 
             <!-- ========== PRODUCT IMAGES GALLERY ========== -->
-            <div class="form-section" id="section-gallery">
+            <div class="form-section" id="section-gallery" v-show="showOptionalFields">
               <div class="section-header">
                 <lucide-icon class="section-icon" name="upload" />
                 <h4 class="section-title">{{ $t('ProductImagesGallery') }}</h4>
@@ -778,7 +804,7 @@
                           v-model="product.unit_sale_id"
                           :placeholder="$t('Choose_Unit_Sale')"
                           :reduce="label => label.value"
-                          :options="units_sub.map(units_sub => ({label: units_sub.name, value: units_sub.id}))"
+                          :options="(units_sub && units_sub.length > 0 ? units_sub : units).map(u => ({label: u.name, value: u.id}))"
                         />
                         <b-form-invalid-feedback>{{ errors[0] }}</b-form-invalid-feedback>
                       </b-form-group>
@@ -798,7 +824,7 @@
                           v-model="product.unit_purchase_id"
                           :placeholder="$t('Choose_Unit_Purchase')"
                           :reduce="label => label.value"
-                          :options="units_sub.map(units_sub => ({label: units_sub.name, value: units_sub.id}))"
+                          :options="(units_sub && units_sub.length > 0 ? units_sub : units).map(u => ({label: u.name, value: u.id}))"
                         />
                         <b-form-invalid-feedback>{{ errors[0] }}</b-form-invalid-feedback>
                       </b-form-group>
@@ -1276,7 +1302,7 @@
             </div>
 
             <!-- ========== SECTION 6: WARRANTY ========== -->
-            <div class="form-section" id="section-warranty">
+            <div class="form-section" id="section-warranty" v-show="showOptionalFields">
               <div class="section-header">
                 <lucide-icon class="section-icon" name="shield" />
                 <h4 class="section-title">{{ $t('Warranty_Guarantee_Tracking') }}</h4>
@@ -1413,7 +1439,7 @@
             </div>
 
             <!-- ========== SECTION 8: OPTIONS ========== -->
-            <div class="form-section" id="section-options">
+            <div class="form-section" id="section-options" v-show="showOptionalFields">
               <div class="section-header">
                 <lucide-icon class="section-icon" name="database-zap" />
                 <h4 class="section-title">{{ $t('Options') }}</h4>
@@ -1527,7 +1553,7 @@
             </div>
 
             <!-- ========== SECTION: PHARMACY (BATCH & EXPIRY) ========== -->
-            <div class="form-section" id="section-pharmacy">
+            <div class="form-section" id="section-pharmacy" v-show="showOptionalFields">
               <div class="section-header">
                 <lucide-icon class="section-icon" name="heart-pulse" />
                 <h4 class="section-title">{{ $t('Pharmacy_Settings') || 'Pharmacy' }}</h4>
@@ -1753,6 +1779,7 @@ export default {
   },
   data() {
     return {
+      showOptionalFields: false,
       focused: false,
       timer:null,
       search_input:'',
@@ -2579,6 +2606,56 @@ export default {
               })
             })
 
+            // Auto-select defaults from system settings if set
+            if (response.data.default_category_id) {
+              const defId = Number(response.data.default_category_id);
+              const catExists = (this.categories || []).some(c => Number(c.id) === defId);
+              if (catExists) {
+                this.product.category_id = defId;
+                if (!this.product.assigned_category_ids || !this.product.assigned_category_ids.length) {
+                  this.product.assigned_category_ids = [defId];
+                }
+              }
+            }
+
+            if (response.data.default_product_type) {
+              this.product.type = response.data.default_product_type;
+              this.Selected_Type_Product(this.product.type);
+            }
+
+            if (response.data.default_unit_id) {
+              const uId = Number(response.data.default_unit_id);
+              const uExists = (this.units || []).some(u => Number(u.id) === uId);
+              if (uExists) {
+                this.product.unit_id = uId;
+                this.Selected_Unit(uId, true);
+              }
+            }
+
+            if (response.data.default_unit_sale_id) {
+              const sId = Number(response.data.default_unit_sale_id);
+              const sExists = (this.units || []).some(u => Number(u.id) === sId);
+              if (sExists) {
+                this.product.unit_sale_id = sId;
+              }
+            }
+
+            if (response.data.default_unit_purchase_id) {
+              const pId = Number(response.data.default_unit_purchase_id);
+              const pExists = (this.units || []).some(u => Number(u.id) === pId);
+              if (pExists) {
+                this.product.unit_purchase_id = pId;
+              }
+            }
+
+            if (response.data.default_is_imei !== undefined && response.data.default_is_imei !== null) {
+              this.product.is_imei = Boolean(response.data.default_is_imei);
+            }
+
+            if (response.data.default_enable_serial_tracking !== undefined && response.data.default_enable_serial_tracking !== null) {
+              this.product.enable_serial_tracking = Boolean(response.data.default_enable_serial_tracking);
+            }
+
           this.isLoading = false;
         })
         .catch(response => {
@@ -2596,14 +2673,24 @@ export default {
     Get_Units_SubBase(value) {
       axios
         .get("get_sub_units_by_base?id=" + value)
-        .then(({ data }) => (this.units_sub = data));
+        .then(({ data }) => {
+          this.units_sub = data || [];
+          if (!this.product.unit_sale_id && value) {
+            this.product.unit_sale_id = value;
+          }
+          if (!this.product.unit_purchase_id && value) {
+            this.product.unit_purchase_id = value;
+          }
+        });
     },
 
     //---------------------- Event Select Unit Product ------------------------------\\
-    Selected_Unit(value) {
+    Selected_Unit(value, keepSalePurchaseDefaults = false) {
       this.units_sub = [];
-      this.product.unit_sale_id = "";
-      this.product.unit_purchase_id = "";
+      if (!keepSalePurchaseDefaults) {
+        this.product.unit_sale_id = "";
+        this.product.unit_purchase_id = "";
+      }
       this.Get_Units_SubBase(value);
     },
 
@@ -2723,12 +2810,22 @@ export default {
         default:
           return this.$t('Unknown');
       }
+    },
+    toggleOptionalFields() {
+      this.showOptionalFields = !this.showOptionalFields;
+      try {
+        localStorage.setItem('product_show_optional_fields', this.showOptionalFields ? 'true' : 'false');
+      } catch (e) {}
     }
   }, //end Methods
 
   //-----------------------------Created function-------------------
 
   created: function() {
+    const savedState = localStorage.getItem('product_show_optional_fields');
+    if (savedState !== null) {
+      this.showOptionalFields = savedState === 'true';
+    }
     this.GetElements();
 
     // If navigating with ?duplicate=:id, preload product data for duplication

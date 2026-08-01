@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Account;
+use App\Models\Category;
 use App\Models\Client;
 use App\Models\Currency;
 use App\Models\Language;
@@ -10,6 +11,7 @@ use App\Models\PaymentMethod;
 use App\Models\PosSetting;
 use App\Models\Setting;
 use App\Models\sms_gateway;
+use App\Models\Unit;
 use App\Models\User;
 use App\Models\UserWarehouse;
 use App\Models\Warehouse;
@@ -158,6 +160,13 @@ class SettingsController extends Controller
             'invoice_logo_height' => $invoice_logo_height,
             'quotation_with_stock' => $quotation_with_stock,
             'show_language' => $show_language,
+            'default_category_id' => isset($request['default_category_id']) && $request['default_category_id'] !== '' && $request['default_category_id'] !== 'null' ? (int) $request['default_category_id'] : null,
+            'default_product_type' => $request['default_product_type'] ?? 'is_single',
+            'default_unit_id' => isset($request['default_unit_id']) && $request['default_unit_id'] !== '' && $request['default_unit_id'] !== 'null' ? (int) $request['default_unit_id'] : null,
+            'default_unit_sale_id' => isset($request['default_unit_sale_id']) && $request['default_unit_sale_id'] !== '' && $request['default_unit_sale_id'] !== 'null' ? (int) $request['default_unit_sale_id'] : null,
+            'default_unit_purchase_id' => isset($request['default_unit_purchase_id']) && $request['default_unit_purchase_id'] !== '' && $request['default_unit_purchase_id'] !== 'null' ? (int) $request['default_unit_purchase_id'] : null,
+            'default_is_imei' => ($request['default_is_imei'] == '1' || $request['default_is_imei'] == 'true' || $request['default_is_imei'] === 1 || $request['default_is_imei'] === true) ? 1 : 0,
+            'default_enable_serial_tracking' => ($request['default_enable_serial_tracking'] == '1' || $request['default_enable_serial_tracking'] == 'true' || $request['default_enable_serial_tracking'] === 1 || $request['default_enable_serial_tracking'] === true) ? 1 : 0,
             'dark_mode' => $dark_mode,
             'rtl' => $rtl,
             'invoice_footer' => $request['invoice_footer'],
@@ -632,6 +641,13 @@ class SettingsController extends Controller
             $item['invoice_logo_height'] = (int) ($settings->invoice_logo_height ?: 60);
             $item['quotation_with_stock'] = $settings->quotation_with_stock;
             $item['show_language'] = $settings->show_language;
+            $item['default_category_id'] = $settings->default_category_id ? (int) $settings->default_category_id : null;
+            $item['default_product_type'] = $settings->default_product_type ?: 'is_single';
+            $item['default_unit_id'] = $settings->default_unit_id ? (int) $settings->default_unit_id : null;
+            $item['default_unit_sale_id'] = $settings->default_unit_sale_id ? (int) $settings->default_unit_sale_id : null;
+            $item['default_unit_purchase_id'] = $settings->default_unit_purchase_id ? (int) $settings->default_unit_purchase_id : null;
+            $item['default_is_imei'] = (bool) ($settings->default_is_imei ?? false);
+            $item['default_enable_serial_tracking'] = (bool) ($settings->default_enable_serial_tracking ?? false);
             $item['dark_mode'] = (bool) ($settings->dark_mode ?? false);
             $item['rtl'] = (bool) ($settings->rtl ?? false);
             $item['point_to_amount_rate'] = $settings->point_to_amount_rate;
@@ -729,6 +745,8 @@ class SettingsController extends Controller
             $languages = Language::where('is_active', true)->get(['name', 'locale']);
             $accounts = Account::whereNull('deleted_at')->get(['id', 'account_name', 'account_num']);
             $payment_methods = PaymentMethod::whereNull('deleted_at')->get(['id', 'name']);
+            $categories = Category::whereNull('deleted_at')->get(['id', 'name']);
+            $units = Unit::whereNull('deleted_at')->get(['id', 'name', 'ShortName']);
 
             return response()->json([
                 'settings' => $item,
@@ -740,6 +758,8 @@ class SettingsController extends Controller
                 'payment_methods' => $payment_methods,
                 'zones_array' => $zones_array,
                 'languages' => $languages,
+                'categories' => $categories,
+                'units' => $units,
             ], 200);
         } else {
             return response()->json(['statut' => 'error'], 500);
@@ -934,6 +954,8 @@ class SettingsController extends Controller
             }
 
             $languages = Language::where('is_active', true)->get(['name', 'locale']);
+            $categories = Category::whereNull('deleted_at')->get(['id', 'name']);
+            $units = Unit::whereNull('deleted_at')->get(['id', 'name', 'ShortName']);
 
             return response()->json([
                 'settings' => $item,
@@ -943,6 +965,8 @@ class SettingsController extends Controller
                 'sms_gateway' => $sms_gateway,
                 'zones_array' => $zones_array,
                 'languages' => $languages,
+                'categories' => $categories,
+                'units' => $units,
             ], 200);
         } else {
             return response()->json(['statut' => 'error'], 500);

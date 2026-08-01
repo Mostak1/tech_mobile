@@ -1028,6 +1028,26 @@
               <span class="item-name">{{$t('Import_Purchases')}}</span>
             </router-link>
           </li>
+
+          <li
+            class="nav-item"
+            v-if="currentUserPermissions && (currentUserPermissions.includes('Purchases_view') || currentUserPermissions.includes('Purchases_add'))"
+          >
+            <router-link tag="a" class to="/app/reports/purchased_products_report">
+              <lucide-icon class="nav-icon" name="shopping-cart" />
+              <span class="item-name">{{$t('Purchased_Products_Report') || 'Purchased Products Report'}}</span>
+            </router-link>
+          </li>
+
+          <li
+            class="nav-item"
+            v-if="currentUserPermissions && (currentUserPermissions.includes('Purchases_view') || currentUserPermissions.includes('Purchases_add'))"
+          >
+            <router-link tag="a" class to="/app/reports/supplier_purchases_report">
+              <lucide-icon class="nav-icon" name="truck" />
+              <span class="item-name">{{$t('Supplier_Purchases_Report') || 'Supplier Purchases Report'}}</span>
+            </router-link>
+          </li>
           
         </ul>
 

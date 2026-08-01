@@ -221,6 +221,9 @@ Route::middleware(['auth:api', 'Is_Active', 'request.safety', 'token.timeout'])-
 
     Route::get('report/users', 'ReportController@users_Report');
     Route::get('report/stock', 'ReportController@stock_Report');
+    Route::get('report/purchased_products_report', 'ReportController@purchased_products_report');
+    Route::get('report/supplier_purchases_report', 'ReportController@supplier_purchases_report');
+    Route::get('report/supplier_purchases_detail/{id}', 'ReportController@supplier_purchases_detail');
     Route::get('report/get_sales_by_user', 'ReportController@get_sales_by_user');
     Route::get('report/get_quotations_by_user', 'ReportController@get_quotations_by_user');
     Route::get('report/get_sales_return_by_user', 'ReportController@get_sales_return_by_user');

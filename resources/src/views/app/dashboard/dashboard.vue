@@ -164,7 +164,7 @@
         <!-- Stat cards row 3 -->
         <b-row v-else-if="sectionId === 'stat_cards_3'" :key="sectionId" class="mb-3 align-items-stretch dashboard-mobile-stat-grid">
           <b-col md="4" sm="6" class="mb-3 mb-md-0">
-            <router-link to="/app/purchases/list" class="stat-card purchases-qty-card h-100">
+            <router-link to="/app/reports/purchased_products_report" class="stat-card purchases-qty-card h-100">
               <div class="stat-card-icon"><lucide-icon name="shopping-bag" /></div>
               <div class="stat-card-content">
                 <p class="stat-card-label">{{ $t('Total_Purchases_Qty') || 'Total Purchases Quantity' }}</p>
