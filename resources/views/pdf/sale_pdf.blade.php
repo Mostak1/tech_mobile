@@ -140,7 +140,7 @@
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body, body * { 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, 'DejaVu Sans' !important; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, 'DejaVu Sans' !important;
         }
         body { 
             font-size: 9.5pt; 

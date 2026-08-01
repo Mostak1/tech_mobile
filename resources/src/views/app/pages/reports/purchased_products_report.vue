@@ -74,8 +74,8 @@
     <b-modal id="purchased-details-modal" hide-footer size="lg" :title="selectedProduct ? selectedProduct.name + ' - Variation Details' : 'Product Details'">
       <div v-if="selectedProduct">
         <div class="mb-3 p-2 bg-light rounded">
-          <strong>Code:</strong> {{ selectedProduct.code }} | 
-          <strong>Category:</strong> {{ selectedProduct.category || 'N/A' }} | 
+          <strong>Code:</strong> {{ selectedProduct.code }} |
+          <strong>Category:</strong> {{ selectedProduct.category || 'N/A' }} |
           <strong>Total Remaining:</strong> {{ selectedProduct.remaining_qty }} {{ selectedProduct.unit }}
         </div>
         <div class="table-responsive">
