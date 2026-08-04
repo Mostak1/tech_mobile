@@ -1795,7 +1795,7 @@ export default {
             clearTimeout(this.timer);
             this.timer = null;
       }
-      if (this.search_input.length < 2) {
+      if (this.search_input.trim().length < 3) {
         return this.product_filter= [];
       }
       if (this.sale.warehouse_id != "" &&  this.sale.warehouse_id != null) {
@@ -1846,27 +1846,29 @@ export default {
 
           if(product_filter.length === 1){
             this.SearchProduct(product_filter[0], weight, matchedSerial);
-          } else if (product_filter.length === 0 && term.length >= 2) {
-            axios.get('products/serials/search', { params: { search: this.search_input.trim(), warehouse_id: this.sale.warehouse_id } })
-              .then(res => {
-                if (res.data && res.data.success && res.data.product_id) {
-                  const targetId = res.data.product_id;
-                  const targetVariant = res.data.variant_id;
-                  const found = this.products.find(p => p.id === targetId && (targetVariant ? p.product_variant_id === targetVariant : true));
-                  if (found) {
-                    this.SearchProduct(found, null, res.data.serial_no || this.search_input.trim());
-                    return;
+          } else if (product_filter.length === 0 && term.length >= 3) {
+            // Show local name/code matches immediately. Previously every name
+            // search waited for the serial API before opening the dropdown.
+            this.filterDropdownProducts(term);
+            if (this.product_filter.length === 0) {
+              axios.get('products/serials/search', { params: { search: this.search_input.trim(), warehouse_id: this.sale.warehouse_id } })
+                .then(res => {
+                  if (term !== this.search_input.trim().toLowerCase()) return;
+                  if (res.data && res.data.success && res.data.product_id) {
+                    const targetId = res.data.product_id;
+                    const targetVariant = res.data.variant_id;
+                    const found = this.products.find(p => p.id === targetId && (targetVariant ? p.product_variant_id === targetVariant : true));
+                    if (found) {
+                      this.SearchProduct(found, null, res.data.serial_no || this.search_input.trim());
+                    }
                   }
-                }
-                this.filterDropdownProducts(term);
-              })
-              .catch(() => {
-                this.filterDropdownProducts(term);
-              });
+                })
+                .catch(() => {});
+            }
           } else {
             this.filterDropdownProducts(term);
           }
-        }, 800);
+        }, 300);
       } else {
         this.makeToast(
           "warning",

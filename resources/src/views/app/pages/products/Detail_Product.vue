@@ -1421,10 +1421,13 @@ export default {
     },
 
     showDetails() {
-      let id = this.$route.params.id;
+      const id = this.$route.params.id;
+      this.isLoading = true;
       axios
         .get(`get_product_detail_api/${id}`)
         .then(response => {
+          // Ignore a late response if navbar search already moved to another product.
+          if (String(this.$route.params.id) !== String(id)) return;
           this.product = response.data;
           this.isLoading = false;
 
@@ -1440,10 +1443,29 @@ export default {
           }
         })
         .catch(() => {
+          if (String(this.$route.params.id) !== String(id)) return;
           setTimeout(() => {
             this.isLoading = false;
           }, 500);
         });
+    },
+
+    resetProductDetailState() {
+      this.product = {};
+      this.activeImageIndex = 0;
+      this.batches = [];
+      this.serialNumbers = [];
+      this.serialCurrentPage = 1;
+      this.serialTotalRows = 0;
+      this.serialHistoryModalOpen = false;
+      this.selectedSerial = null;
+      this.serialHistory = [];
+      this.salesHistory = [];
+      this.salesCurrentPage = 1;
+      this.salesTotalRows = 0;
+      this.purchasesHistory = [];
+      this.purchasesCurrentPage = 1;
+      this.purchasesTotalRows = 0;
     },
 
     debouncedLoadSalesHistory() {
@@ -1644,6 +1666,12 @@ export default {
   },
 
   watch: {
+    '$route.params.id'(newProductId, oldProductId) {
+      if (newProductId && String(newProductId) !== String(oldProductId)) {
+        this.resetProductDetailState();
+        this.showDetails();
+      }
+    },
     '$route.query.search_serial_id'(newSerialId) {
       if (newSerialId) {
         this.showSerialHistory({ id: newSerialId });
