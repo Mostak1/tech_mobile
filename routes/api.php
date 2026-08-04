@@ -589,6 +589,7 @@ Route::middleware(['auth:api', 'Is_Active', 'request.safety', 'token.timeout'])-
     Route::get('get_product_detail_api/{id}', 'ProductsController@Get_Products_Details');
     Route::get('products/serials/available', 'ProductsController@available_serial_numbers');
     Route::get('products/serials/search', 'ProductsController@search_serial');
+    Route::get('global-product-search', 'ProductsController@global_product_search');
     Route::get('products/serials/{id}/history', 'ProductsController@serial_number_history');
     Route::get('products/{id}/sales_history', 'ProductsController@sales_history');
     Route::get('products/{id}/purchases_history', 'ProductsController@purchases_history');

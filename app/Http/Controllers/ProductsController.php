@@ -1670,7 +1670,13 @@ class ProductsController extends BaseController
         $limit = $request->integer('limit', 10);
         $page = $request->integer('page', 1);
 
-        $query = \App\Models\SaleDetail::with(['sale.client', 'sale.warehouse', 'product.unit'])
+        $query = \App\Models\SaleDetail::with([
+            'sale.client',
+            'sale.warehouse',
+            'product.unit',
+            'productVariant',
+            'saleUnit',
+        ])
             ->where('product_id', $id)
             ->whereHas('sale', function ($q) {
                 $q->whereNull('deleted_at');
@@ -1695,6 +1701,21 @@ class ProductsController extends BaseController
 
         $data = [];
         foreach ($paginated->items() as $detail) {
+            $baseCost = $detail->productVariant
+                ? (float) $detail->productVariant->cost
+                : (float) optional($detail->product)->cost;
+
+            $unitCost = $baseCost;
+            if ($detail->saleUnit && (float) $detail->saleUnit->operator_value > 0) {
+                $operatorValue = (float) $detail->saleUnit->operator_value;
+                $unitCost = $detail->saleUnit->operator === '/'
+                    ? $baseCost / $operatorValue
+                    : $baseCost * $operatorValue;
+            }
+
+            $costTotal = $unitCost * (float) $detail->quantity;
+            $profit = (float) $detail->total - $costTotal;
+
             $data[] = [
                 'id' => $detail->id,
                 'sale_id' => $detail->sale_id,
@@ -1706,6 +1727,8 @@ class ProductsController extends BaseController
                 'unit' => optional($detail->product->unit)->ShortName,
                 'price' => $detail->price,
                 'total' => $detail->total,
+                'cost_total' => round($costTotal, 2),
+                'profit' => round($profit, 2),
             ];
         }
 
@@ -2131,6 +2154,99 @@ class ProductsController extends BaseController
             'variant_id' => $serial->variation_id,
             'serial_no' => $serial->serial_no,
             'serial_id' => $serial->id,
+        ]);
+    }
+
+    public function global_product_search(Request $request)
+    {
+        $this->authorizeForUser($request->user('api'), 'view', Product::class);
+
+        $search = trim((string) $request->get('search'));
+        if (mb_strlen($search) < 2) {
+            return response()->json(['suggestions' => []]);
+        }
+
+        $like = '%'.$search.'%';
+        $suggestions = collect();
+
+        $serials = ProductSerialNumber::with(['product:id,name,code', 'variation:id,name,code'])
+            ->where('serial_no', 'like', $like)
+            ->orderByRaw('CASE WHEN serial_no = ? THEN 0 ELSE 1 END', [$search])
+            ->orderBy('serial_no')
+            ->limit(5)
+            ->get();
+
+        foreach ($serials as $serial) {
+            if (! $serial->product) {
+                continue;
+            }
+            $suggestions->push([
+                'type' => 'serial',
+                'product_id' => $serial->product_id,
+                'serial_id' => $serial->id,
+                'serial_no' => $serial->serial_no,
+                'name' => $serial->product->name,
+                'code' => optional($serial->variation)->code ?: $serial->product->code,
+                'variant' => optional($serial->variation)->name,
+            ]);
+        }
+
+        $products = Product::query()
+            ->whereNull('deleted_at')
+            ->where('is_active', 1)
+            ->where(function ($query) use ($like) {
+                $query->where('name', 'like', $like)
+                    ->orWhere('code', 'like', $like);
+            })
+            ->orderByRaw('CASE WHEN code = ? THEN 0 WHEN name = ? THEN 1 ELSE 2 END', [$search, $search])
+            ->orderBy('name')
+            ->limit(8)
+            ->get(['id', 'name', 'code']);
+
+        foreach ($products as $product) {
+            $suggestions->push([
+                'type' => 'product',
+                'product_id' => $product->id,
+                'serial_id' => null,
+                'serial_no' => null,
+                'name' => $product->name,
+                'code' => $product->code,
+                'variant' => null,
+            ]);
+        }
+
+        $variants = ProductVariant::with('product:id,name,code,is_active,deleted_at')
+            ->where(function ($query) use ($like) {
+                $query->where('name', 'like', $like)
+                    ->orWhere('code', 'like', $like);
+            })
+            ->whereHas('product', function ($query) {
+                $query->whereNull('deleted_at')->where('is_active', 1);
+            })
+            ->orderByRaw('CASE WHEN code = ? THEN 0 ELSE 1 END', [$search])
+            ->orderBy('name')
+            ->limit(5)
+            ->get(['id', 'product_id', 'name', 'code']);
+
+        foreach ($variants as $variant) {
+            $suggestions->push([
+                'type' => 'product',
+                'product_id' => $variant->product_id,
+                'serial_id' => null,
+                'serial_no' => null,
+                'name' => $variant->product->name,
+                'code' => $variant->code,
+                'variant' => $variant->name,
+            ]);
+        }
+
+        return response()->json([
+            'suggestions' => $suggestions
+                ->unique(function ($item) {
+                    return $item['type'].'-'.$item['product_id'].'-'.($item['serial_id'] ?: $item['code']);
+                })
+                ->take(10)
+                ->values(),
         ]);
     }
 

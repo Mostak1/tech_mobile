@@ -178,3 +178,77 @@
     }
   }
 }
+/* Global product / code / IMEI autocomplete in both navbar layouts. */
+.global-search-suggestions {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 340px;
+  max-height: 360px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .14);
+  z-index: 1100;
+}
+
+.global-search-suggestion {
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 1px solid #f0f1f3;
+  background: transparent;
+  color: #374151;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.global-search-suggestion:last-child {
+  border-bottom: 0;
+}
+
+.global-search-suggestion:hover,
+.global-search-suggestion:focus {
+  background: #f5f3ff;
+  outline: 0;
+}
+
+.global-search-main {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.global-search-meta {
+  color: #6b7280;
+  font-size: 11px;
+}
+
+.global-search-meta strong {
+  color: #663399;
+  margin-right: 5px;
+}
+
+body.dark-theme .global-search-suggestions {
+  background: #1a1a2e;
+  border-color: #2d2d44;
+}
+
+body.dark-theme .global-search-suggestion {
+  color: #e5e7eb;
+  border-bottom-color: #2d2d44;
+}
+
+body.dark-theme .global-search-suggestion:hover,
+body.dark-theme .global-search-suggestion:focus {
+  background: #2d2d44;
+}
+
+@media (max-width: 576px) {
+  .global-search-suggestions {
+    width: min(340px, calc(100vw - 24px));
+  }
+}

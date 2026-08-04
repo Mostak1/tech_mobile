@@ -237,6 +237,22 @@
           <span v-else-if="props.column.field == 'due'">
             {{ formatPriceWithSymbol(currentUser.currency, props.row.due, 2) }}
           </span>
+          <span v-else-if="props.column.field == 'profit'" class="d-inline-flex align-items-center">
+            <button
+              type="button"
+              class="btn btn-sm btn-link p-0 mr-2"
+              :title="isProfitVisible(props.row.id) ? 'Hide profit' : 'Show profit'"
+              @click="toggleProfitVisibility(props.row.id)"
+            >
+              <lucide-icon :name="isProfitVisible(props.row.id) ? 'eye-off' : 'eye'" />
+            </button>
+            <span
+              v-if="isProfitVisible(props.row.id)"
+              :class="Number(props.row.profit) >= 0 ? 'text-success font-weight-bold' : 'text-danger font-weight-bold'"
+            >
+              {{ formatPriceWithSymbol(currentUser.currency, props.row.profit, 2) }}
+            </span>
+          </span>
            <div v-else-if="props.column.field == 'Ref'">
               <router-link
                 :to="'/app/sales/detail/'+props.row.id"
@@ -1641,6 +1657,7 @@ export default {
       payment_methods: [],
       shipment: {},
       sales: [],
+      visibleProfits: {},
       sale_due:'',
       due:0,
       client_name:'',
@@ -1857,6 +1874,13 @@ export default {
           sortable: false
         },
         {
+          label: this.$t("Profit") || "Profit",
+          field: "profit",
+          tdClass: "text-left",
+          thClass: "text-left",
+          sortable: false
+        },
+        {
           label: this.$t("Paid"),
           field: "paid_amount",
           tdClass: "text-left",
@@ -1900,6 +1924,14 @@ export default {
     }
   },
   methods: {
+
+    isProfitVisible(saleId) {
+      return Boolean(this.visibleProfits[saleId]);
+    },
+
+    toggleProfitVisibility(saleId) {
+      this.$set(this.visibleProfits, saleId, !this.visibleProfits[saleId]);
+    },
 
   
     //------------------------------ Print -------------------------\\

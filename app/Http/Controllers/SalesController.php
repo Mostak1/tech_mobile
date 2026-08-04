@@ -95,7 +95,15 @@ class SalesController extends BaseController
         $data = [];
 
         // Check If User Has Permission View  All Records
-        $Sales = Sale::with('facture', 'client', 'warehouse', 'user')
+        $Sales = Sale::with([
+            'facture',
+            'client',
+            'warehouse',
+            'user',
+            'details.product:id,cost',
+            'details.productVariant:id,cost',
+            'details.saleUnit:id,operator,operator_value',
+        ])
             ->where('deleted_at', '=', null)
             ->where(function ($query) use ($view_records) {
                 if (! $view_records) {
@@ -156,6 +164,23 @@ class SalesController extends BaseController
             $item['client_code'] = $Sale['client']['code'];
             $item['client_adr'] = $Sale['client']['adresse'];
             $item['GrandTotal'] = number_format($Sale['GrandTotal'], 2, '.', '');
+            $costTotal = 0.0;
+            foreach ($Sale->details as $detail) {
+                $baseCost = $detail->productVariant
+                    ? (float) $detail->productVariant->cost
+                    : (float) optional($detail->product)->cost;
+
+                $unitCost = $baseCost;
+                if ($detail->saleUnit && (float) $detail->saleUnit->operator_value > 0) {
+                    $operatorValue = (float) $detail->saleUnit->operator_value;
+                    $unitCost = $detail->saleUnit->operator === '/'
+                        ? $baseCost / $operatorValue
+                        : $baseCost * $operatorValue;
+                }
+
+                $costTotal += $unitCost * (float) $detail->quantity;
+            }
+            $item['profit'] = number_format((float) $Sale['GrandTotal'] - $costTotal, 2, '.', '');
             $item['paid_amount'] = number_format($Sale['paid_amount'], 2, '.', '');
             $item['due'] = number_format($item['GrandTotal'] - $item['paid_amount'], 2, '.', '');
             $item['payment_status'] = $Sale['payment_statut'];

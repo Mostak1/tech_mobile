@@ -517,6 +517,7 @@
                             <th :style="thStyle">{{ $t('Quantity') || 'Quantity' }}</th>
                             <th :style="thStyle">{{ $t('price') || 'Price' }}</th>
                             <th :style="thStyle">{{ $t('Total') || 'Total' }}</th>
+                            <th :style="thStyle">{{ $t('Profit') || 'Profit' }}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -532,6 +533,9 @@
                             <td :style="tdStyle">{{ formatNumber(s.quantity, 2) }} {{ s.unit }}</td>
                             <td :style="tdStyle">{{ formatPriceWithSymbol(currentUser && currentUser.currency, s.price, 2) }}</td>
                             <td :style="tdStyle">{{ formatPriceWithSymbol(currentUser && currentUser.currency, s.total, 2) }}</td>
+                            <td :style="{ ...tdStyle, color: Number(s.profit) >= 0 ? '#10b981' : '#ef4444', fontWeight: '700' }">
+                              {{ formatPriceWithSymbol(currentUser && currentUser.currency, s.profit, 2) }}
+                            </td>
                           </tr>
                         </tbody>
                       </table>

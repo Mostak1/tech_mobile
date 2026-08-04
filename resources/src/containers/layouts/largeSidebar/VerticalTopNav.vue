@@ -8,15 +8,33 @@
         <div></div>
       </button>
 
-      <!-- Global Serial/IMEI Search -->
+      <!-- Global product / Serial / IMEI Search -->
       <div class="search-bar-global d-flex align-items-center ml-3" style="position: relative;">
         <b-form-input
           v-model="searchSerialQuery"
-          placeholder="Search Serial/IMEI..."
+          placeholder="Search product, code or IMEI..."
+          @input="queueGlobalSearch"
+          @focus="showSearchSuggestions = searchSuggestions.length > 0"
+          @blur="hideGlobalSearch"
           @keyup.enter.native="handleSerialSearch"
           style="width: 250px; border-radius: 20px; padding-right: 35px; border: 1px solid rgba(0,0,0,0.15); height: 36px; font-size: 13px;"
         ></b-form-input>
         <lucide-icon name="search" style="position: absolute; right: 10px; color: #666; cursor: pointer; width: 16px; height: 16px;" @click="handleSerialSearch" />
+        <div v-if="showSearchSuggestions" class="global-search-suggestions">
+          <button
+            v-for="suggestion in searchSuggestions"
+            :key="`${suggestion.type}-${suggestion.product_id}-${suggestion.serial_id || suggestion.code}`"
+            type="button"
+            class="global-search-suggestion"
+            @mousedown.prevent="selectGlobalSuggestion(suggestion)"
+          >
+            <span class="global-search-main">{{ suggestion.name }}<span v-if="suggestion.variant"> — {{ suggestion.variant }}</span></span>
+            <span class="global-search-meta">
+              <strong>{{ suggestion.type === 'serial' ? 'IMEI' : 'Product' }}</strong>
+              {{ suggestion.type === 'serial' ? suggestion.serial_no : suggestion.code }}
+            </span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -162,7 +180,10 @@ export default {
 
   data() {
     return {
-      searchSerialQuery: ""
+      searchSerialQuery: "",
+      searchSuggestions: [],
+      showSearchSuggestions: false,
+      globalSearchTimer: null
     };
   },
 
@@ -183,6 +204,10 @@ export default {
 
     handleSerialSearch() {
       if (!this.searchSerialQuery || !this.searchSerialQuery.trim()) return;
+      if (this.searchSuggestions.length) {
+        this.selectGlobalSuggestion(this.searchSuggestions[0]);
+        return;
+      }
       axios.get(`/products/serials/search?search=${encodeURIComponent(this.searchSerialQuery.trim())}`)
         .then(response => {
           if (response.data.success) {
@@ -205,6 +230,49 @@ export default {
         .catch(error => {
           this.$root.$bvToast.toast('Serial/IMEI not found or error occurred', { title: 'Warning', variant: 'warning', solid: true });
         });
+    },
+
+    queueGlobalSearch() {
+      if (this.globalSearchTimer) clearTimeout(this.globalSearchTimer);
+      const search = this.searchSerialQuery.trim();
+      if (search.length < 2) {
+        this.searchSuggestions = [];
+        this.showSearchSuggestions = false;
+        return;
+      }
+      this.globalSearchTimer = setTimeout(() => {
+        axios.get('global-product-search', { params: { search } })
+          .then(({ data }) => {
+            if (search !== this.searchSerialQuery.trim()) return;
+            this.searchSuggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
+            this.showSearchSuggestions = this.searchSuggestions.length > 0;
+          })
+          .catch(() => {
+            this.searchSuggestions = [];
+            this.showSearchSuggestions = false;
+          });
+      }, 300);
+    },
+
+    hideGlobalSearch() {
+      setTimeout(() => { this.showSearchSuggestions = false; }, 150);
+    },
+
+    selectGlobalSuggestion(suggestion) {
+      this.searchSerialQuery = '';
+      this.searchSuggestions = [];
+      this.showSearchSuggestions = false;
+      const query = suggestion.serial_id ? { search_serial_id: suggestion.serial_id } : {};
+      this.$router.push({
+        path: `/app/products/detail/${suggestion.product_id}`,
+        query
+      }).catch(() => {
+        if (this.$route.params.id == suggestion.product_id && suggestion.serial_id) {
+          this.$router.replace({
+            query: { ...this.$route.query, search_serial_id: suggestion.serial_id, _t: Date.now() }
+          });
+        }
+      });
     },
 
     SetLocal(locale) {
@@ -244,6 +312,10 @@ export default {
     } else {
       document.body.classList.remove('dark-theme');
     }
+  },
+
+  beforeDestroy() {
+    if (this.globalSearchTimer) clearTimeout(this.globalSearchTimer);
   }
 };
 </script>
@@ -859,4 +931,3 @@ body.dark-theme .dropdown-item:hover {
   }
 }
 </style>
-

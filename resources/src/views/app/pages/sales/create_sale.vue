@@ -1801,42 +1801,30 @@ export default {
       if (this.sale.warehouse_id != "" &&  this.sale.warehouse_id != null) {
         this.timer = setTimeout(() => {
 
-          let barcode = this.search_input.trim();
+          const barcode = this.search_input.trim();
           let weight = null;
           // Check if the barcode is from a weighing scale (13 digits)
           if (barcode.length === 13 && !isNaN(barcode)) {
             // Find the product by product code
-            let product = this.products.find(prod => prod.code === barcode);
+            let product = this.products.find(prod => String(prod.code || '').trim() === barcode);
             if (product) {
               this.SearchProduct(product, weight);
               return;
             }else{
 
               let productCode = barcode.substring(0, 7); // First 7 digits → Product Code
-              let weight = parseFloat(barcode.substring(7, 12)) / 1000; // Convert weight (grams to kg)
-              let product = this.products.find(prod => prod.code === productCode);
+              weight = parseFloat(barcode.substring(7, 12)) / 1000; // Convert weight (grams to kg)
+              product = this.products.find(prod => String(prod.code || '').trim() === productCode);
               if (product) {
-                product.quantity = weight; // Assign weight to product
                 this.SearchProduct(product, weight);
                 return;
               }
             }
-
-            this.makeToast("danger", "Invalid product code scanned", this.$t("Error"));
-            this.search_input= '';
-            this.$refs.product_autocomplete.value = "";
-            this.product_filter = [];
           }
-          // else{
-          //   //  No product found - Display Error Alert
-          //   this.makeToast("danger", "Invalid product code scanned", this.$t("Error"));
-          //   this.search_input= '';
-          //   this.$refs.product_autocomplete.value = "";
-          //   this.product_filter = [];
 
-          // }
-          
-          
+          // A 13-digit numeric value is not always a scale barcode. If neither
+          // scale format matches, continue through the normal code/name/serial
+          // search instead of clearing the user's input.
           const term = this.search_input.trim().toLowerCase();
           let matchedSerial = null;
 
