@@ -5460,7 +5460,7 @@ class ReportController extends BaseController
         ];
         $data = [];
 
-        $sale_details_data = SaleDetail::with('product', 'sale', 'sale.client', 'sale.warehouse')
+        $sale_details_data = SaleDetail::with('product', 'sale', 'sale.client', 'sale.warehouse', 'productVariant', 'saleUnit')
             ->where(function ($query) use ($view_records) {
                 if (! $view_records) {
                     return $query->whereHas('sale', function ($q) {
@@ -5550,13 +5550,42 @@ class ReportController extends BaseController
                 $unit = null;
             }
 
-            if ($detail->product_variant_id) {
-                $productsVariants = ProductVariant::where('product_id', $detail->product_id)
-                    ->where('id', $detail->product_variant_id)->first();
+            $baseCost = $detail->productVariant
+                ? (float) $detail->productVariant->cost
+                : (float) optional($detail->product)->cost;
 
-                $product_name = '[' . $productsVariants->name . ']' . $detail['product']['name'];
+            $unitCost = $baseCost;
+            $saleUnit = $detail->saleUnit;
+            if (!$saleUnit && $detail->sale_unit_id !== null) {
+                $saleUnit = Unit::find($detail->sale_unit_id);
+            }
+            if ($saleUnit && (float) $saleUnit->operator_value > 0) {
+                $operatorValue = (float) $saleUnit->operator_value;
+                $unitCost = $saleUnit->operator === '/'
+                    ? $baseCost / $operatorValue
+                    : $baseCost * $operatorValue;
+            }
+
+            $imeiSuffix = '';
+            if (!empty($detail->imei_number)) {
+                $imeis = array_map('trim', explode(',', $detail->imei_number));
+                $last4List = [];
+                foreach ($imeis as $imei) {
+                    if (strlen($imei) > 4) {
+                        $last4List[] = substr($imei, -4);
+                    } elseif ($imei !== '') {
+                        $last4List[] = $imei;
+                    }
+                }
+                if (!empty($last4List)) {
+                    $imeiSuffix = ' (' . implode(', ', $last4List) . ')';
+                }
+            }
+
+            if ($detail->productVariant) {
+                $product_name = '[' . $detail->productVariant->name . '] ' . $detail['product']['name'] . $imeiSuffix;
             } else {
-                $product_name = $detail['product']['name'];
+                $product_name = $detail['product']['name'] . $imeiSuffix;
             }
 
             $item['date'] = $detail->date;
@@ -5567,6 +5596,9 @@ class ReportController extends BaseController
             $item['total'] = $detail->total;
             $item['product_name'] = $product_name;
             $item['unit_sale'] = $unit ? $unit->ShortName : '';
+            $item['purchase_price'] = round($unitCost, 2);
+            $item['sell_price'] = $detail->price;
+            $item['profit'] = round((float) $detail->total - ($unitCost * (float) $detail->quantity), 2);
 
             $data[] = $item;
         }

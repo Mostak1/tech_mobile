@@ -49,6 +49,17 @@
           <span v-if="props.column.field == 'total'">
             {{ formatPriceWithSymbol(currentUser && currentUser.currency, props.row.total, 2) }}
           </span>
+          <span v-else-if="props.column.field == 'purchase_price'">
+            {{ formatPriceWithSymbol(currentUser && currentUser.currency, props.row.purchase_price, 2) }}
+          </span>
+          <span v-else-if="props.column.field == 'sell_price'">
+            {{ formatPriceWithSymbol(currentUser && currentUser.currency, props.row.sell_price, 2) }}
+          </span>
+          <span v-else-if="props.column.field == 'profit'">
+            <span :style="{ color: Number(props.row.profit) >= 0 ? '#10b981' : '#ef4444', fontWeight: '700' }">
+              {{ formatPriceWithSymbol(currentUser && currentUser.currency, props.row.profit, 2) }}
+            </span>
+          </span>
           <span v-else>
             {{ props.formattedRow[props.column.field] }}
           </span>
@@ -257,9 +268,31 @@ export default {
           sortable: false
         },
         {
+          label: this.$t("Purchase_Cost") || "Purchase Price",
+          field: "purchase_price",
+          tdClass: "text-left",
+          thClass: "text-left",
+          sortable: false
+        },
+        {
+          label: this.$t("Sell_Price") || this.$t("Sale_Price") || "Sell Price",
+          field: "sell_price",
+          tdClass: "text-left",
+          thClass: "text-left",
+          sortable: false
+        },
+        {
           label: this.$t("Total"),
           field: "total",
           headerField: this.sumCount2,
+          tdClass: "text-left",
+          thClass: "text-left",
+          sortable: false
+        },
+        {
+          label: this.$t("Profit") || "Profit",
+          field: "profit",
+          headerField: this.sumCountProfit,
           tdClass: "text-left",
           thClass: "text-left",
           sortable: false
@@ -292,6 +325,19 @@ export default {
       let sum = 0;
       for (let i = 0; i < rowObj.children.length; i++) {
         const value = Number(rowObj.children[i].total) || 0;
+        if (Number.isFinite(value)) {
+          sum += value;
+        }
+      }
+      return this.formatPriceWithSymbol(this.currentUser && this.currentUser.currency, sum, 2);
+    },
+    sumCountProfit(rowObj) {
+      if (!rowObj || !Array.isArray(rowObj.children)) {
+        return this.formatPriceWithSymbol(this.currentUser && this.currentUser.currency, 0, 2);
+      }
+      let sum = 0;
+      for (let i = 0; i < rowObj.children.length; i++) {
+        const value = Number(rowObj.children[i].profit) || 0;
         if (Number.isFinite(value)) {
           sum += value;
         }
@@ -437,9 +483,15 @@ export default {
       salesData.forEach(row => {
         tableHtml += `<tr>`;
         this.columns.forEach(col => {
-          let cellContent = row[col.field];
+          let cellContent = '';
           if (col.field === 'total') {
             cellContent = this.formatPriceWithSymbol(this.currentUser && this.currentUser.currency, row.total, 2);
+          } else if (col.field === 'purchase_price') {
+            cellContent = this.formatPriceWithSymbol(this.currentUser && this.currentUser.currency, row.purchase_price, 2);
+          } else if (col.field === 'sell_price') {
+            cellContent = this.formatPriceWithSymbol(this.currentUser && this.currentUser.currency, row.sell_price, 2);
+          } else if (col.field === 'profit') {
+            cellContent = this.formatPriceWithSymbol(this.currentUser && this.currentUser.currency, row.profit, 2);
           } else {
             cellContent = row[col.field] || '';
           }
@@ -452,11 +504,22 @@ export default {
       // Table Footer (Totals)
       const totalQuantity = salesData.reduce((sum, sale) => sum + parseFloat(sale.quantity || 0), 0);
       const totalTotal = salesData.reduce((sum, sale) => sum + parseFloat(sale.total || 0), 0);
+      const totalProfit = salesData.reduce((sum, sale) => sum + parseFloat(sale.profit || 0), 0);
+      
       tableHtml += `<tfoot><tr>`;
-      tableHtml += `<td class="text-left font-weight-bold">${this.$t('Total')}</td>`;
-      tableHtml += `<td colspan="5"></td>`; // Span for other columns
-      tableHtml += `<td class="text-left font-weight-bold">${totalQuantity}</td>`;
-      tableHtml += `<td class="text-left font-weight-bold">${this.formatPriceWithSymbol(this.currentUser && this.currentUser.currency, totalTotal, 2)}</td>`;
+      this.columns.forEach((col, idx) => {
+        if (idx === 0) {
+          tableHtml += `<td class="text-left font-weight-bold">${this.$t('Total')}</td>`;
+        } else if (col.field === 'quantity') {
+          tableHtml += `<td class="text-left font-weight-bold">${totalQuantity.toFixed(2)}</td>`;
+        } else if (col.field === 'total') {
+          tableHtml += `<td class="text-left font-weight-bold">${this.formatPriceWithSymbol(this.currentUser && this.currentUser.currency, totalTotal, 2)}</td>`;
+        } else if (col.field === 'profit') {
+          tableHtml += `<td class="text-left font-weight-bold">${this.formatPriceWithSymbol(this.currentUser && this.currentUser.currency, totalProfit, 2)}</td>`;
+        } else {
+          tableHtml += `<td></td>`;
+        }
+      });
       tableHtml += `</tr></tfoot>`;
 
       tableHtml += `</table>`;
@@ -514,7 +577,7 @@ export default {
     //----------------------------------- Sales PDF ------------------------------\\
     Sales_PDF() {
       var self = this;
-      let pdf = new jsPDF("p", "pt");
+      let pdf = new jsPDF("l", "pt");
 
       const fontPath = "/fonts/Vazirmatn-Bold.ttf";
       pdf.addFont(fontPath, "VazirmatnBold", "bold"); 
@@ -527,12 +590,25 @@ export default {
         { header: self.$t("warehouse"), dataKey: "warehouse_name" },
         { header: self.$t("Name_product"), dataKey: "product_name" },
         { header: self.$t("Qty_sold"), dataKey: "quantity" },
-        { header: self.$t("Total"), dataKey: "total" },
+        { header: self.$t("Purchase_Cost") || "Purchase Price", dataKey: "purchase_price_formatted" },
+        { header: self.$t("Sell_Price") || self.$t("Sale_Price") || "Sell Price", dataKey: "sell_price_formatted" },
+        { header: self.$t("Total"), dataKey: "total_formatted" },
+        { header: self.$t("Profit") || "Profit", dataKey: "profit_formatted" },
       ];
+
+      // Format values for the PDF body since we use standard key-values
+      let formattedSales = self.sales.map(sale => ({
+        ...sale,
+        purchase_price_formatted: self.formatPriceWithSymbol(self.currentUser && self.currentUser.currency, sale.purchase_price, 2),
+        sell_price_formatted: self.formatPriceWithSymbol(self.currentUser && self.currentUser.currency, sale.sell_price, 2),
+        total_formatted: self.formatPriceWithSymbol(self.currentUser && self.currentUser.currency, sale.total, 2),
+        profit_formatted: self.formatPriceWithSymbol(self.currentUser && self.currentUser.currency, sale.profit, 2),
+      }));
 
       // Calculate totals
       let totalquantity = self.sales.reduce((sum, sale) => sum + parseFloat(sale.quantity || 0), 0);
       let totaltotal= self.sales.reduce((sum, sale) => sum + parseFloat(sale.total || 0), 0);
+      let totalprofit = self.sales.reduce((sum, sale) => sum + parseFloat(sale.profit || 0), 0);
 
       let footer = [{
         date: self.$t("Total"),
@@ -541,12 +617,15 @@ export default {
         warehouse_name: '',
         product_name: '',
         quantity: `${totalquantity.toFixed(2)}`,
-        total: `${totaltotal.toFixed(2)}`,
+        purchase_price_formatted: '',
+        sell_price_formatted: '',
+        total_formatted: self.formatPriceWithSymbol(self.currentUser && self.currentUser.currency, totaltotal, 2),
+        profit_formatted: self.formatPriceWithSymbol(self.currentUser && self.currentUser.currency, totalprofit, 2),
       }];
 
       autoTable(pdf, {
              columns: columns,
-             body: self.sales,
+             body: formattedSales,
              foot: footer,
              startY: 70,
              theme: "grid", 
