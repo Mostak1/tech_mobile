@@ -3,7 +3,7 @@ name: Deploy to cPanel via FTP
 on:
   push:
     branches:
-      - rajon
+      - simon
 
 jobs:
   web-deploy:
@@ -30,10 +30,10 @@ jobs:
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ftp.techseba.com
-          username: rajon@rajon.techseba.com
-          password: Rajon%12361236
+          username: idbpos@idbpos.techseba.com
+          password: Mostak%12361236
           port: 21
-          server-dir: rajon.techseba.com/
+          server-dir: idbpos.techseba.com/
           exclude: |
             **/.git*
             **/.git*/**
