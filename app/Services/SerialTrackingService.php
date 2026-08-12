@@ -85,8 +85,9 @@ class SerialTrackingService
                 continue;
             }
 
-            // Check for global duplicates in DB
-            $query = ProductSerialNumber::whereIn('serial_no', $serials);
+            // Check for global duplicates in DB that are currently available/active in stock
+            $query = ProductSerialNumber::whereIn('serial_no', $serials)
+                ->whereIn('status', ['available', 'in_service']);
             if ($purchaseId) {
                 // Ignore serials registered under current purchase
                 $query->where(function ($q) use ($purchaseId) {
@@ -534,7 +535,10 @@ class SerialTrackingService
                     continue;
                 }
 
-                $dbDuplicates = ProductSerialNumber::whereIn('serial_no', $serials)->pluck('serial_no')->toArray();
+                $dbDuplicates = ProductSerialNumber::whereIn('serial_no', $serials)
+                    ->whereIn('status', ['available', 'in_service'])
+                    ->pluck('serial_no')
+                    ->toArray();
                 if (!empty($dbDuplicates)) {
                     $errors[] = "The following serial numbers are already registered in the system: " . implode(', ', $dbDuplicates);
                 }
@@ -850,7 +854,7 @@ class SerialTrackingService
 
             $this->reverseForSaleReturnDetail($detail);
 
-            if ($return->statut === 'completed') {
+            if ($return->statut === 'received' || $return->statut === 'completed') {
                 foreach ($serials as $serialNo) {
                     $serial = ProductSerialNumber::where('serial_no', $serialNo)->first();
                     if ($serial) {

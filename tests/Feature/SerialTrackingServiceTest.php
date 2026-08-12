@@ -35,11 +35,16 @@ class SerialTrackingServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        \Illuminate\Support\Facades\DB::statement('SET FOREIGN_KEY_CHECKS=0;');
         $this->service = app(SerialTrackingService::class);
 
         // Create warehouses
         $this->warehouseA = Warehouse::create(['name' => 'Warehouse A', 'city' => 'City A', 'mobile' => '123', 'email' => 'a@test.com']);
         $this->warehouseB = Warehouse::create(['name' => 'Warehouse B', 'city' => 'City B', 'mobile' => '456', 'email' => 'b@test.com']);
+
+        // Create Category and Unit
+        $category = \App\Models\Category::create(['name' => 'Category A', 'code' => 'CAT-A']);
+        $unit = \App\Models\Unit::create(['name' => 'Unit A', 'ShortName' => 'U-A', 'operator' => '*', 'operator_value' => 1]);
 
         // Create serial tracking product
         $this->serialProduct = Product::create([
@@ -47,10 +52,10 @@ class SerialTrackingServiceTest extends TestCase
             'name' => 'Serial Product',
             'type' => 'is_single',
             'Type_barcode' => 'CODE128',
-            'category_id' => 1,
-            'unit_id' => 1,
-            'unit_purchase_id' => 1,
-            'unit_sale_id' => 1,
+            'category_id' => $category->id,
+            'unit_id' => $unit->id,
+            'unit_purchase_id' => $unit->id,
+            'unit_sale_id' => $unit->id,
             'price' => 100,
             'cost' => 80,
             'wholesale_price' => 100,
@@ -64,10 +69,10 @@ class SerialTrackingServiceTest extends TestCase
             'name' => 'Normal Product',
             'type' => 'is_single',
             'Type_barcode' => 'CODE128',
-            'category_id' => 1,
-            'unit_id' => 1,
-            'unit_purchase_id' => 1,
-            'unit_sale_id' => 1,
+            'category_id' => $category->id,
+            'unit_id' => $unit->id,
+            'unit_purchase_id' => $unit->id,
+            'unit_sale_id' => $unit->id,
             'price' => 50,
             'cost' => 40,
             'wholesale_price' => 50,
@@ -255,6 +260,107 @@ class SerialTrackingServiceTest extends TestCase
         $this->assertDatabaseHas('product_serial_numbers', [
             'id' => $serial->id,
             'status' => 'available',
+        ]);
+    }
+
+    public function test_validate_purchase_allows_already_sold_serial_numbers(): void
+    {
+        // 1. Create a serial number and mark it as sold
+        ProductSerialNumber::create([
+            'product_id' => $this->serialProduct->id,
+            'serial_no' => 'SN-SOLD-REPURCHASE',
+            'status' => 'sold',
+            'current_location_id' => null,
+        ]);
+
+        // 2. Try to validate purchase with the same serial number
+        $details = [
+            [
+                'product_id' => $this->serialProduct->id,
+                'quantity' => 1,
+                'serial_numbers' => ['SN-SOLD-REPURCHASE'],
+            ]
+        ];
+
+        $errors = $this->service->validatePurchase($details);
+
+        // It should NOT return errors because the serial is sold and can be repurchased.
+        $this->assertEmpty($errors);
+    }
+
+    public function test_validate_adjustment_allows_adding_already_sold_serial_numbers(): void
+    {
+        // 1. Create a serial number and mark it as sold
+        ProductSerialNumber::create([
+            'product_id' => $this->serialProduct->id,
+            'serial_no' => 'SN-SOLD-ADJUSTBACK',
+            'status' => 'sold',
+            'current_location_id' => null,
+        ]);
+
+        // 2. Try to validate adjustment of type "add" with the same serial number
+        $details = [
+            [
+                'product_id' => $this->serialProduct->id,
+                'quantity' => 1,
+                'type' => 'add',
+                'serial_numbers' => ['SN-SOLD-ADJUSTBACK'],
+            ]
+        ];
+
+        $errors = $this->service->validateAdjustment($details, $this->warehouseA->id);
+
+        // It should NOT return errors because the serial is sold and can be adjusted back.
+        $this->assertEmpty($errors);
+    }
+
+    public function test_apply_for_sale_return_restores_serials_as_available(): void
+    {
+        // 1. Create a serial number and mark it as sold
+        $serial = ProductSerialNumber::create([
+            'product_id' => $this->serialProduct->id,
+            'serial_no' => 'SN-RETURN-TEST',
+            'status' => 'sold',
+            'current_location_id' => null,
+        ]);
+
+        // 2. Create SaleReturn with status 'received'
+        $return = SaleReturn::forceCreate([
+            'warehouse_id' => $this->warehouseA->id,
+            'client_id' => 1,
+            'date' => now()->toDateString(),
+            'Ref' => 'RT-0001',
+            'user_id' => 1,
+            'statut' => 'received',
+            'payment_statut' => 'unpaid',
+        ]);
+
+        // 3. Create SaleReturnDetails
+        $detail = SaleReturnDetails::forceCreate([
+            'sale_return_id' => $return->id,
+            'product_id' => $this->serialProduct->id,
+            'quantity' => 1,
+            'price' => 100,
+            'total' => 100,
+        ]);
+
+        $inputDetails = [
+            [
+                'product_id' => $this->serialProduct->id,
+                'serial_numbers' => ['SN-RETURN-TEST'],
+            ]
+        ];
+
+        // 4. Apply sale return
+        $this->service->applyForSaleReturn($return, $inputDetails, [$detail]);
+
+        // 5. Assert the serial number is now available
+        $this->assertDatabaseHas('product_serial_numbers', [
+            'id' => $serial->id,
+            'status' => 'available',
+            'current_location_id' => $this->warehouseA->id,
+            'sold_sell_line_id' => null,
+            'current_customer_id' => null,
         ]);
     }
 }
