@@ -108,7 +108,7 @@ Route::get('/run-migration', function () {
         $output = \Illuminate\Support\Facades\Artisan::output();
         return response()->json([
             'status' => true,
-            'message' => 'Database migration executed successfully!',
+            'message' => 'Database migration executed @successfully!',
             'output' => $output,
         ]);
     } catch (\Throwable $e) {
