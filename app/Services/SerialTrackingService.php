@@ -86,8 +86,12 @@ class SerialTrackingService
             }
 
             // Check for global duplicates in DB that are currently available/active in stock
+            // or have already been registered under a normal purchase (purchase_line_id is not null)
             $query = ProductSerialNumber::whereIn('serial_no', $serials)
-                ->whereIn('status', ['available', 'in_service']);
+                ->where(function ($q) {
+                    $q->whereIn('status', ['available', 'in_service'])
+                      ->orWhereNotNull('purchase_line_id');
+                });
             if ($purchaseId) {
                 // Ignore serials registered under current purchase
                 $query->where(function ($q) use ($purchaseId) {
@@ -141,20 +145,35 @@ class SerialTrackingService
 
             if ($purchase->statut === 'received') {
                 foreach ($serials as $serialNo) {
-                    // Create or update serial number
-                    $serial = ProductSerialNumber::updateOrCreate(
-                        ['serial_no' => $serialNo],
-                        [
+                    $cleanNo = trim((string) $serialNo);
+                    $serial = ProductSerialNumber::where('serial_no', $cleanNo)->first();
+                    if (!$serial) {
+                        $serial = ProductSerialNumber::whereRaw('LOWER(TRIM(serial_no)) = ?', [strtolower($cleanNo)])->first();
+                    }
+
+                    if ($serial && $serial->status === 'sold' && is_null($serial->purchase_line_id)) {
+                        // Negative-sold serial: link the purchase without changing sold status or resetting references
+                        $serial->update([
                             'product_id' => $productId,
                             'variation_id' => $detail->product_variant_id,
                             'purchase_line_id' => $detail->id,
-                            'status' => 'available',
-                            'current_location_id' => $purchase->warehouse_id,
-                            'current_customer_id' => null,
-                            'sold_sell_line_id' => null,
-                            'service_job_id' => null,
-                        ]
-                    );
+                        ]);
+                    } else {
+                        // Create or update serial number
+                        $serial = ProductSerialNumber::updateOrCreate(
+                            ['serial_no' => $cleanNo],
+                            [
+                                'product_id' => $productId,
+                                'variation_id' => $detail->product_variant_id,
+                                'purchase_line_id' => $detail->id,
+                                'status' => 'available',
+                                'current_location_id' => $purchase->warehouse_id,
+                                'current_customer_id' => null,
+                                'sold_sell_line_id' => null,
+                                'service_job_id' => null,
+                            ]
+                        );
+                    }
 
                     // Log history
                     SerialNumberHistory::create([
@@ -213,6 +232,9 @@ class SerialTrackingService
             return $errors;
         }
 
+        $posSetting = \App\Models\PosSetting::whereNull('deleted_at')->first();
+        $allowOverselling = $posSetting ? (bool) $posSetting->allow_overselling : false;
+
         foreach ($details as $item) {
             $productId = $item['product_id'] ?? null;
             if (!$productId || !$this->isProductTracked($productId)) {
@@ -242,14 +264,21 @@ class SerialTrackingService
                 }
                 $belongsToCurrentSale = $saleId && $serial && $serial->soldSellLine
                     && (int) $serial->soldSellLine->sale_id === (int) $saleId;
+
                 if (!$serial) {
-                    $errors[] = "Serial number $cleanNo does not exist in the database.";
+                    if (!$allowOverselling) {
+                        $errors[] = "Serial number $cleanNo does not exist in the database.";
+                    }
                 } elseif ((int) $serial->product_id !== (int) $productId) {
                     $errors[] = "Serial number $cleanNo belongs to a different product.";
                 } elseif (($serial->status !== 'available' || $serial->service_job_id !== null) && ! $belongsToCurrentSale) {
-                    $errors[] = "Serial number $cleanNo is not available (Current status: {$serial->status}).";
+                    if (!$allowOverselling || $serial->status === 'sold') {
+                        $errors[] = "Serial number $cleanNo is not available (Current status: {$serial->status}).";
+                    }
                 } elseif (! $belongsToCurrentSale && !empty($serial->current_location_id) && (int)$serial->current_location_id !== (int)$warehouseId) {
-                    $errors[] = "Serial number $cleanNo is not located in the selected warehouse.";
+                    if (!$allowOverselling) {
+                        $errors[] = "Serial number $cleanNo is not located in the selected warehouse.";
+                    }
                 }
             }
         }
@@ -299,6 +328,7 @@ class SerialTrackingService
                         'status' => 'sold',
                         'sold_sell_line_id' => $detail->id,
                         'current_customer_id' => $sale->client_id,
+                        'current_location_id' => $sale->warehouse_id,
                     ]);
 
                     SerialNumberHistory::create([
@@ -309,6 +339,28 @@ class SerialTrackingService
                         'to_location_id' => null,
                         'customer_id' => $sale->client_id,
                         'notes' => 'Sold via Sale: ' . $sale->Ref,
+                        'created_by' => $userId,
+                    ]);
+                } else {
+                    // Create negative-sold serial directly in sold status with no purchase reference
+                    $serial = ProductSerialNumber::create([
+                        'serial_no' => $cleanNo,
+                        'product_id' => $productId,
+                        'variation_id' => $detail->product_variant_id,
+                        'status' => 'sold',
+                        'sold_sell_line_id' => $detail->id,
+                        'current_customer_id' => $sale->client_id,
+                        'current_location_id' => $sale->warehouse_id,
+                    ]);
+
+                    SerialNumberHistory::create([
+                        'serial_number_id' => $serial->id,
+                        'type' => 'sell',
+                        'reference_id' => $sale->id,
+                        'from_location_id' => $sale->warehouse_id,
+                        'to_location_id' => null,
+                        'customer_id' => $sale->client_id,
+                        'notes' => 'Sold (Negative Sell) via Sale: ' . $sale->Ref,
                         'created_by' => $userId,
                     ]);
                 }
@@ -323,18 +375,24 @@ class SerialTrackingService
     {
         $serialNumbers = ProductSerialNumber::where('sold_sell_line_id', $detail->id)->get();
         foreach ($serialNumbers as $serial) {
-            // Restore status to available
-            $serial->update([
-                'status' => 'available',
-                'sold_sell_line_id' => null,
-                'current_customer_id' => null,
-            ]);
+            if (is_null($serial->purchase_line_id)) {
+                // Negative-sold serial that was never purchased: delete it and its histories completely
+                SerialNumberHistory::where('serial_number_id', $serial->id)->delete();
+                $serial->delete();
+            } else {
+                // Restore status to available
+                $serial->update([
+                    'status' => 'available',
+                    'sold_sell_line_id' => null,
+                    'current_customer_id' => null,
+                ]);
 
-            // Add history record for reversal if needed, or simply delete sale histories
-            SerialNumberHistory::where('serial_number_id', $serial->id)
-                ->where('type', 'sell')
-                ->where('reference_id', $detail->sale_id)
-                ->delete();
+                // Delete the sale history record
+                SerialNumberHistory::where('serial_number_id', $serial->id)
+                    ->where('type', 'sell')
+                    ->where('reference_id', $detail->sale_id)
+                    ->delete();
+            }
         }
     }
 

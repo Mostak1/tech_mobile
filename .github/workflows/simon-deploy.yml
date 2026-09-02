@@ -3,7 +3,7 @@ name: Deploy to cPanel via FTP
 on:
   push:
     branches:
-      - rajon
+      - simon
 
 jobs:
   web-deploy:
