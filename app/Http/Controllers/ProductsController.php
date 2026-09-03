@@ -24,6 +24,7 @@ use App\Models\UserWarehouse;
 use App\Models\Warehouse;
 use App\Models\WarehouseLocation;
 use App\Models\ProductWarehouseLocation;
+use App\Models\PurchaseDetail;
 use App\Services\ProductGalleryService;
 use App\utils\helpers;
 use Carbon\Carbon;
@@ -1699,11 +1700,48 @@ class ProductsController extends BaseController
 
         $paginated = $query->orderBy('id', 'desc')->paginate($limit, ['*'], 'page', $page);
 
+        // Pre-fetch latest purchase cost for product/variant
+        $purchaseCostsMap = [];
+        $latestPurchaseDetails = PurchaseDetail::join('purchases as p', 'p.id', '=', 'purchase_details.purchase_id')
+            ->whereNull('p.deleted_at')
+            ->where('p.statut', 'received')
+            ->where('purchase_details.product_id', $id)
+            ->select(
+                'purchase_details.product_id',
+                'purchase_details.product_variant_id',
+                'purchase_details.cost',
+                'p.date',
+                'purchase_details.id'
+            )
+            ->orderBy('p.date', 'desc')
+            ->orderBy('purchase_details.id', 'desc')
+            ->get();
+
+        foreach ($latestPurchaseDetails as $pd) {
+            $key = $pd->product_id . ':' . ($pd->product_variant_id ?? 'null');
+            if (!isset($purchaseCostsMap[$key])) {
+                $purchaseCostsMap[$key] = (float) $pd->cost;
+            }
+            $prodKey = $pd->product_id . ':all';
+            if (!isset($purchaseCostsMap[$prodKey])) {
+                $purchaseCostsMap[$prodKey] = (float) $pd->cost;
+            }
+        }
+
         $data = [];
         foreach ($paginated->items() as $detail) {
-            $baseCost = $detail->productVariant
-                ? (float) $detail->productVariant->cost
-                : (float) optional($detail->product)->cost;
+            $pKey = $detail->product_id . ':' . ($detail->product_variant_id ?? 'null');
+            $pProdKey = $detail->product_id . ':all';
+
+            if (isset($purchaseCostsMap[$pKey])) {
+                $baseCost = $purchaseCostsMap[$pKey];
+            } elseif (isset($purchaseCostsMap[$pProdKey])) {
+                $baseCost = $purchaseCostsMap[$pProdKey];
+            } else {
+                $baseCost = $detail->productVariant
+                    ? (float) $detail->productVariant->cost
+                    : (float) optional($detail->product)->cost;
+            }
 
             $unitCost = $baseCost;
             if ($detail->saleUnit && (float) $detail->saleUnit->operator_value > 0) {
