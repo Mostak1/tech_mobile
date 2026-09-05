@@ -5534,43 +5534,7 @@ class ReportController extends BaseController
             ->orderBy($order, $dir)
             ->get();
 
-        // Pre-fetch latest purchase costs for products/variants in these sale details
-        $productIds = [];
-        foreach ($sale_details as $detail) {
-            if ($detail->product_id) {
-                $productIds[] = $detail->product_id;
-            }
-        }
-        $productIds = array_unique($productIds);
-
-        $purchaseCostsMap = [];
-        if (!empty($productIds)) {
-            $latestPurchaseDetails = PurchaseDetail::join('purchases as p', 'p.id', '=', 'purchase_details.purchase_id')
-                ->whereNull('p.deleted_at')
-                ->where('p.statut', 'received')
-                ->whereIn('purchase_details.product_id', $productIds)
-                ->select(
-                    'purchase_details.product_id',
-                    'purchase_details.product_variant_id',
-                    'purchase_details.cost',
-                    'p.date',
-                    'purchase_details.id'
-                )
-                ->orderBy('p.date', 'desc')
-                ->orderBy('purchase_details.id', 'desc')
-                ->get();
-
-            foreach ($latestPurchaseDetails as $pd) {
-                $key = $pd->product_id . ':' . ($pd->product_variant_id ?? 'null');
-                if (!isset($purchaseCostsMap[$key])) {
-                    $purchaseCostsMap[$key] = (float) $pd->cost;
-                }
-                $prodKey = $pd->product_id . ':all';
-                if (!isset($purchaseCostsMap[$prodKey])) {
-                    $purchaseCostsMap[$prodKey] = (float) $pd->cost;
-                }
-            }
-        }
+        $serialService = app(\App\Services\SerialTrackingService::class);
 
         foreach ($sale_details as $detail) {
 
@@ -5582,36 +5546,17 @@ class ReportController extends BaseController
                     ->where('id', $detail->product_id)
                     ->first();
 
-                if ($product_unit_sale_id['unitSale']) {
+                if ($product_unit_sale_id && $product_unit_sale_id['unitSale']) {
                     $unit = Unit::where('id', $product_unit_sale_id['unitSale']->id)->first();
+                } else {
+                    $unit = null;
                 }
-                $unit = null;
             }
 
-            $pKey = $detail->product_id . ':' . ($detail->product_variant_id ?? 'null');
-            $pProdKey = $detail->product_id . ':all';
-
-            if (isset($purchaseCostsMap[$pKey])) {
-                $baseCost = $purchaseCostsMap[$pKey];
-            } elseif (isset($purchaseCostsMap[$pProdKey])) {
-                $baseCost = $purchaseCostsMap[$pProdKey];
-            } else {
-                $baseCost = $detail->productVariant
-                    ? (float) $detail->productVariant->cost
-                    : (float) optional($detail->product)->cost;
-            }
-
-            $unitCost = $baseCost;
-            $saleUnit = $detail->saleUnit;
-            if (!$saleUnit && $detail->sale_unit_id !== null) {
-                $saleUnit = Unit::find($detail->sale_unit_id);
-            }
-            if ($saleUnit && (float) $saleUnit->operator_value > 0) {
-                $operatorValue = (float) $saleUnit->operator_value;
-                $unitCost = $saleUnit->operator === '/'
-                    ? $baseCost / $operatorValue
-                    : $baseCost * $operatorValue;
-            }
+            $saleDate = $detail->date ?? optional($detail->sale)->date ?? date('Y-m-d');
+            $costRes = $serialService->getSaleDetailPurchaseCost($detail, $saleDate);
+            $unitCost = $costRes['unit_cost'];
+            $totalCost = $costRes['total_cost'];
 
             $imeiSuffix = '';
             if (!empty($detail->imei_number)) {
@@ -5645,7 +5590,7 @@ class ReportController extends BaseController
             $item['unit_sale'] = $unit ? $unit->ShortName : '';
             $item['purchase_price'] = round($unitCost, 2);
             $item['sell_price'] = $detail->price;
-            $item['profit'] = round((float) $detail->total - ($unitCost * (float) $detail->quantity), 2);
+            $item['profit'] = round((float) $detail->total - $totalCost, 2);
 
             $data[] = $item;
         }

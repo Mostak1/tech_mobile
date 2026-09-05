@@ -147,45 +147,8 @@ class SalesController extends BaseController
             ->orderBy($order, $dir)
             ->get();
 
-        // Pre-fetch latest purchase costs for products/variants in these sales
-        $productIds = [];
-        foreach ($Sales as $Sale) {
-            foreach ($Sale->details as $detail) {
-                if ($detail->product_id) {
-                    $productIds[] = $detail->product_id;
-                }
-            }
-        }
-        $productIds = array_unique($productIds);
-
-        $purchaseCostsMap = [];
-        if (!empty($productIds)) {
-            $latestPurchaseDetails = PurchaseDetail::join('purchases as p', 'p.id', '=', 'purchase_details.purchase_id')
-                ->whereNull('p.deleted_at')
-                ->where('p.statut', 'received')
-                ->whereIn('purchase_details.product_id', $productIds)
-                ->select(
-                    'purchase_details.product_id',
-                    'purchase_details.product_variant_id',
-                    'purchase_details.cost',
-                    'p.date',
-                    'purchase_details.id'
-                )
-                ->orderBy('p.date', 'desc')
-                ->orderBy('purchase_details.id', 'desc')
-                ->get();
-
-            foreach ($latestPurchaseDetails as $pd) {
-                $key = $pd->product_id . ':' . ($pd->product_variant_id ?? 'null');
-                if (!isset($purchaseCostsMap[$key])) {
-                    $purchaseCostsMap[$key] = (float) $pd->cost;
-                }
-                $prodKey = $pd->product_id . ':all';
-                if (!isset($purchaseCostsMap[$prodKey])) {
-                    $purchaseCostsMap[$prodKey] = (float) $pd->cost;
-                }
-            }
-        }
+        $serialService = app(\App\Services\SerialTrackingService::class);
+        $saleCostsMap = $serialService->calculateSalePurchaseCosts($Sales);
 
         foreach ($Sales as $Sale) {
 
@@ -205,31 +168,8 @@ class SalesController extends BaseController
             $item['client_code'] = $Sale['client']['code'];
             $item['client_adr'] = $Sale['client']['adresse'];
             $item['GrandTotal'] = number_format($Sale['GrandTotal'], 2, '.', '');
-            $costTotal = 0.0;
-            foreach ($Sale->details as $detail) {
-                $pKey = $detail->product_id . ':' . ($detail->product_variant_id ?? 'null');
-                $pProdKey = $detail->product_id . ':all';
 
-                if (isset($purchaseCostsMap[$pKey])) {
-                    $baseCost = $purchaseCostsMap[$pKey];
-                } elseif (isset($purchaseCostsMap[$pProdKey])) {
-                    $baseCost = $purchaseCostsMap[$pProdKey];
-                } else {
-                    $baseCost = $detail->productVariant
-                        ? (float) $detail->productVariant->cost
-                        : (float) optional($detail->product)->cost;
-                }
-
-                $unitCost = $baseCost;
-                if ($detail->saleUnit && (float) $detail->saleUnit->operator_value > 0) {
-                    $operatorValue = (float) $detail->saleUnit->operator_value;
-                    $unitCost = $detail->saleUnit->operator === '/'
-                        ? $baseCost / $operatorValue
-                        : $baseCost * $operatorValue;
-                }
-
-                $costTotal += $unitCost * (float) $detail->quantity;
-            }
+            $costTotal = $saleCostsMap[$Sale->id] ?? 0.0;
             $item['profit'] = number_format((float) $Sale['GrandTotal'] - $costTotal, 2, '.', '');
             $item['paid_amount'] = number_format($Sale['paid_amount'], 2, '.', '');
             $item['due'] = number_format($item['GrandTotal'] - $item['paid_amount'], 2, '.', '');

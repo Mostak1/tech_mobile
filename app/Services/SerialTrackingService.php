@@ -1187,4 +1187,275 @@ class SerialTrackingService
             ->where('reference_id', $job->id)
             ->delete();
     }
+
+    /**
+     * Calculate the purchase unit cost and total purchase cost for a single SaleDetail.
+     *
+     * @param SaleDetail $detail
+     * @param string|null $saleDate
+     * @param array $preloadedData Optional pre-fetched maps for bulk performance
+     * @return array ['unit_cost' => float, 'total_cost' => float]
+     */
+    public function getSaleDetailPurchaseCost($detail, ?string $saleDate = null, array $preloadedData = []): array
+    {
+        $productId = $detail->product_id;
+        $variantId = $detail->product_variant_id;
+        $qty = (float) $detail->quantity;
+        if ($qty <= 0) {
+            return ['unit_cost' => 0.0, 'total_cost' => 0.0];
+        }
+
+        $date = $saleDate ?: ($detail->date ?? optional($detail->sale)->date ?? date('Y-m-d'));
+
+        $baseCost = null;
+        $matchedSerialCount = 0;
+        $totalMatchedSerialCost = 0.0;
+
+        // 1. Check linked ProductSerialNumber records by sold_sell_line_id
+        if (isset($preloadedData['serials_by_line'][$detail->id])) {
+            $serials = $preloadedData['serials_by_line'][$detail->id];
+        } elseif ($this->isSupported()) {
+            $serials = ProductSerialNumber::with('purchaseLine')
+                ->where('sold_sell_line_id', $detail->id)
+                ->get();
+        } else {
+            $serials = collect();
+        }
+
+        foreach ($serials as $s) {
+            if ($s->purchaseLine && (float) $s->purchaseLine->cost >= 0) {
+                $totalMatchedSerialCost += (float) $s->purchaseLine->cost;
+                $matchedSerialCount++;
+            }
+        }
+
+        // 2. Check text IMEIs in imei_number if serials not fully matched
+        if ($matchedSerialCount < (int) floor($qty) && !empty($detail->imei_number)) {
+            $parsedImeis = $this->parseSerials($detail->imei_number);
+            foreach ($parsedImeis as $imei) {
+                $cleanNo = trim((string) $imei);
+                if (isset($preloadedData['serials_by_no'][$cleanNo])) {
+                    $serialObj = $preloadedData['serials_by_no'][$cleanNo];
+                    if ($serialObj && $serialObj->purchaseLine && (float) $serialObj->purchaseLine->cost >= 0) {
+                        $totalMatchedSerialCost += (float) $serialObj->purchaseLine->cost;
+                        $matchedSerialCount++;
+                    }
+                } elseif ($this->isSupported()) {
+                    $serialObj = ProductSerialNumber::with('purchaseLine')
+                        ->where('serial_no', $cleanNo)
+                        ->first();
+                    if ($serialObj && $serialObj->purchaseLine && (float) $serialObj->purchaseLine->cost >= 0) {
+                        $totalMatchedSerialCost += (float) $serialObj->purchaseLine->cost;
+                        $matchedSerialCount++;
+                    }
+                }
+            }
+        }
+
+        // If we matched serial/IMEI costs
+        if ($matchedSerialCount > 0) {
+            $avgSerialCost = $totalMatchedSerialCost / $matchedSerialCount;
+            if ($matchedSerialCount >= (int) floor($qty)) {
+                $baseCost = $avgSerialCost;
+            } else {
+                $unmatchedQty = $qty - $matchedSerialCount;
+                $fallbackBaseCost = $this->getPurchaseCostAsOfDate($productId, $variantId, $date, $preloadedData);
+                $baseCost = (($totalMatchedSerialCost) + ($unmatchedQty * $fallbackBaseCost)) / $qty;
+            }
+        }
+
+        // 3. If no serial cost matched, lookup purchase cost as of sale date
+        if ($baseCost === null) {
+            $baseCost = $this->getPurchaseCostAsOfDate($productId, $variantId, $date, $preloadedData);
+        }
+
+        // 4. Apply unit conversion if saleUnit exists
+        $unitCost = $baseCost;
+        $saleUnit = $detail->saleUnit;
+        if (!$saleUnit && $detail->sale_unit_id) {
+            $saleUnit = $preloadedData['units'][$detail->sale_unit_id] ?? null;
+        }
+
+        if ($saleUnit && (float) $saleUnit->operator_value > 0) {
+            $opVal = (float) $saleUnit->operator_value;
+            $unitCost = $saleUnit->operator === '/' ? $baseCost / $opVal : $baseCost * $opVal;
+        }
+
+        return [
+            'unit_cost' => (float) $unitCost,
+            'total_cost' => (float) ($unitCost * $qty),
+        ];
+    }
+
+    /**
+     * Helper to get purchase cost as of sale date, fallback to any purchase or product cost.
+     */
+    public function getPurchaseCostAsOfDate($productId, $variantId, string $date, array $preloadedData = []): float
+    {
+        $key = $productId . ':' . ($variantId ?? 'null');
+        $prodKey = $productId . ':all';
+
+        // Preloaded purchase costs as of sale date if available
+        if (isset($preloadedData['as_of_costs'][$key])) {
+            return (float) $preloadedData['as_of_costs'][$key];
+        }
+        if (isset($preloadedData['as_of_costs'][$prodKey])) {
+            return (float) $preloadedData['as_of_costs'][$prodKey];
+        }
+
+        // Query latest purchase received on or before sale date
+        $pd = PurchaseDetail::join('purchases as p', 'p.id', '=', 'purchase_details.purchase_id')
+            ->whereNull('p.deleted_at')
+            ->where('p.statut', 'received')
+            ->where('purchase_details.product_id', $productId)
+            ->when($variantId, fn ($q) => $q->where('purchase_details.product_variant_id', $variantId))
+            ->where('p.date', '<=', $date)
+            ->select('purchase_details.cost')
+            ->orderBy('p.date', 'desc')
+            ->orderBy('purchase_details.id', 'desc')
+            ->first();
+
+        if ($pd && (float) $pd->cost >= 0) {
+            return (float) $pd->cost;
+        }
+
+        // If product has variant, check any purchase for product without variant constraint on or before sale date
+        if ($variantId) {
+            $pdProd = PurchaseDetail::join('purchases as p', 'p.id', '=', 'purchase_details.purchase_id')
+                ->whereNull('p.deleted_at')
+                ->where('p.statut', 'received')
+                ->where('purchase_details.product_id', $productId)
+                ->where('p.date', '<=', $date)
+                ->select('purchase_details.cost')
+                ->orderBy('p.date', 'desc')
+                ->orderBy('purchase_details.id', 'desc')
+                ->first();
+
+            if ($pdProd && (float) $pdProd->cost >= 0) {
+                return (float) $pdProd->cost;
+            }
+        }
+
+        // Fallback: earliest purchase after sale date if none before
+        $pdAfter = PurchaseDetail::join('purchases as p', 'p.id', '=', 'purchase_details.purchase_id')
+            ->whereNull('p.deleted_at')
+            ->where('p.statut', 'received')
+            ->where('purchase_details.product_id', $productId)
+            ->select('purchase_details.cost')
+            ->orderBy('p.date', 'asc')
+            ->orderBy('purchase_details.id', 'asc')
+            ->first();
+
+        if ($pdAfter && (float) $pdAfter->cost >= 0) {
+            return (float) $pdAfter->cost;
+        }
+
+        // Fallback: product variant cost or product default cost
+        if ($variantId) {
+            if (isset($preloadedData['product_costs']['variant:' . $variantId])) {
+                return (float) $preloadedData['product_costs']['variant:' . $variantId];
+            }
+            $varCost = \App\Models\ProductVariant::whereKey($variantId)->value('cost');
+            if ($varCost !== null && (float) $varCost >= 0) {
+                return (float) $varCost;
+            }
+        }
+
+        if (isset($preloadedData['product_costs'][$prodKey])) {
+            return (float) $preloadedData['product_costs'][$prodKey];
+        }
+
+        $prodCost = Product::whereKey($productId)->value('cost');
+        return (float) ($prodCost ?? 0.0);
+    }
+
+    /**
+     * Calculate total purchase cost for a collection of Sale models or array of Sales.
+     * Returns an array mapping [sale_id => total_cost].
+     */
+    public function calculateSalePurchaseCosts($sales): array
+    {
+        $saleCostsMap = [];
+
+        $detailIds = [];
+        $productIds = [];
+        $variantIds = [];
+        $allImeis = [];
+
+        foreach ($sales as $sale) {
+            $saleCostsMap[$sale->id] = 0.0;
+            foreach ($sale->details as $detail) {
+                if ($detail->id) {
+                    $detailIds[] = $detail->id;
+                }
+                if ($detail->product_id) {
+                    $productIds[] = $detail->product_id;
+                }
+                if ($detail->product_variant_id) {
+                    $variantIds[] = $detail->product_variant_id;
+                }
+                if (!empty($detail->imei_number)) {
+                    $allImeis = array_merge($allImeis, $this->parseSerials($detail->imei_number));
+                }
+            }
+        }
+
+        $detailIds = array_unique(array_filter($detailIds));
+        $productIds = array_unique(array_filter($productIds));
+        $variantIds = array_unique(array_filter($variantIds));
+        $allImeis = array_unique(array_filter($allImeis));
+
+        $serialsByLine = [];
+        if (!empty($detailIds) && $this->isSupported()) {
+            $serials = ProductSerialNumber::with('purchaseLine')
+                ->whereIn('sold_sell_line_id', $detailIds)
+                ->get();
+            foreach ($serials as $s) {
+                $serialsByLine[$s->sold_sell_line_id][] = $s;
+            }
+        }
+
+        $serialsByNo = [];
+        if (!empty($allImeis) && $this->isSupported()) {
+            $serials = ProductSerialNumber::with('purchaseLine')
+                ->whereIn('serial_no', $allImeis)
+                ->get();
+            foreach ($serials as $s) {
+                $serialsByNo[$s->serial_no] = $s;
+            }
+        }
+
+        $productCosts = [];
+        if (!empty($productIds)) {
+            $prods = Product::whereIn('id', $productIds)->get(['id', 'cost']);
+            foreach ($prods as $p) {
+                $productCosts[$p->id . ':all'] = (float) $p->cost;
+            }
+        }
+        if (!empty($variantIds)) {
+            $vars = \App\Models\ProductVariant::whereIn('id', $variantIds)->get(['id', 'cost']);
+            foreach ($vars as $v) {
+                $productCosts['variant:' . $v->id] = (float) $v->cost;
+            }
+        }
+
+        $preloadedData = [
+            'serials_by_line' => $serialsByLine,
+            'serials_by_no' => $serialsByNo,
+            'product_costs' => $productCosts,
+        ];
+
+        foreach ($sales as $sale) {
+            $saleDate = $sale->date ?? date('Y-m-d');
+            $costTotal = 0.0;
+            foreach ($sale->details as $detail) {
+                $costRes = $this->getSaleDetailPurchaseCost($detail, $saleDate, $preloadedData);
+                $costTotal += $costRes['total_cost'];
+            }
+            $saleCostsMap[$sale->id] = $costTotal;
+        }
+
+        return $saleCostsMap;
+    }
 }
+
