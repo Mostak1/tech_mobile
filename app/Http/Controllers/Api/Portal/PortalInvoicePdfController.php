@@ -101,8 +101,15 @@ class PortalInvoicePdfController extends Controller
                 $data['Net_price'] = $detail->price - ($data['DiscountNet'] ?? 0) - $tax_price;
                 $data['taxe'] = number_format($detail->price - $data['Net_price'] - ($data['DiscountNet'] ?? 0), 2, '.', '');
             }
-            $data['is_imei'] = optional($detail->product)->is_imei ?? 0;
-            $data['imei_number'] = $detail->imei_number ?? '';
+            $snList = \App\Models\ProductSerialNumber::where('sold_sell_line_id', $detail->id)->pluck('serial_no')->toArray();
+            $imeiStr = $detail->imei_number ?? '';
+            if (!empty($snList)) {
+                $existing = !empty($imeiStr) ? array_map('trim', explode(',', $imeiStr)) : [];
+                $combined = array_unique(array_merge($existing, $snList));
+                $imeiStr = implode(', ', $combined);
+            }
+            $data['is_imei'] = (bool) ((optional($detail->product)->is_imei ?? 0) || (optional($detail->product)->enable_serial_tracking ?? 0) || !empty($imeiStr));
+            $data['imei_number'] = $imeiStr;
 
             $details[] = $data;
         }

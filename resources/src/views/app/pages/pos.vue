@@ -973,8 +973,8 @@
                   <tr v-for="detail_invoice in invoice_pos.details">
                     <td colspan="3">
                       {{detail_invoice.name}}
-                      <br v-show="detail_invoice.is_imei && detail_invoice.imei_number !==null">
-                      <span v-show="detail_invoice.is_imei && detail_invoice.imei_number !==null ">{{$t('IMEI_SN')}} : {{detail_invoice.imei_number}}</span>
+                      <br v-show="(detail_invoice.is_imei || detail_invoice.enable_serial_tracking || (detail_invoice.serial_numbers && detail_invoice.serial_numbers.length > 0)) && (detail_invoice.imei_number || (detail_invoice.serial_numbers && detail_invoice.serial_numbers.length > 0))">
+                      <span v-show="(detail_invoice.is_imei || detail_invoice.enable_serial_tracking || (detail_invoice.serial_numbers && detail_invoice.serial_numbers.length > 0)) && (detail_invoice.imei_number || (detail_invoice.serial_numbers && detail_invoice.serial_numbers.length > 0))">{{$t('IMEI_SN')}} : {{ detail_invoice.imei_number || (detail_invoice.serial_numbers ? detail_invoice.serial_numbers.join(', ') : '') }}</span>
                       <br>
                       <span>{{formatNumber(detail_invoice.quantity,2)}} {{detail_invoice.unit_sale}} x {{ formatPriceDisplay(detail_invoice.total/detail_invoice.quantity,2) }}</span>
                     </td>
@@ -1148,8 +1148,8 @@
                   <tr v-for="detail_invoice in invoice_pos.details">
                     <td>
                       {{detail_invoice.name}}
-                      <br v-show="detail_invoice.is_imei && detail_invoice.imei_number !==null">
-                      <small v-show="detail_invoice.is_imei && detail_invoice.imei_number !==null ">{{$t('IMEI_SN')}} : {{detail_invoice.imei_number}}</small>
+                      <br v-show="(detail_invoice.is_imei || detail_invoice.enable_serial_tracking || (detail_invoice.serial_numbers && detail_invoice.serial_numbers.length > 0)) && (detail_invoice.imei_number || (detail_invoice.serial_numbers && detail_invoice.serial_numbers.length > 0))">
+                      <small v-show="(detail_invoice.is_imei || detail_invoice.enable_serial_tracking || (detail_invoice.serial_numbers && detail_invoice.serial_numbers.length > 0)) && (detail_invoice.imei_number || (detail_invoice.serial_numbers && detail_invoice.serial_numbers.length > 0))">{{$t('IMEI_SN')}} : {{ detail_invoice.imei_number || (detail_invoice.serial_numbers ? detail_invoice.serial_numbers.join(', ') : '') }}</small>
                     </td>
                     <td style="text-align:center">
                       {{formatNumber(detail_invoice.quantity,2)}} {{detail_invoice.unit_sale}}
@@ -1316,8 +1316,8 @@
                   <tr v-for="detail_invoice in invoice_pos.details">
                     <td colspan="2">
                       <strong>{{detail_invoice.name}}</strong>
-                      <br v-show="detail_invoice.is_imei && detail_invoice.imei_number !==null">
-                      <span v-show="detail_invoice.is_imei && detail_invoice.imei_number !==null ">{{$t('IMEI_SN')}} : {{detail_invoice.imei_number}}</span>
+                      <br v-show="(detail_invoice.is_imei || detail_invoice.enable_serial_tracking || (detail_invoice.serial_numbers && detail_invoice.serial_numbers.length > 0)) && (detail_invoice.imei_number || (detail_invoice.serial_numbers && detail_invoice.serial_numbers.length > 0))">
+                      <span v-show="(detail_invoice.is_imei || detail_invoice.enable_serial_tracking || (detail_invoice.serial_numbers && detail_invoice.serial_numbers.length > 0)) && (detail_invoice.imei_number || (detail_invoice.serial_numbers && detail_invoice.serial_numbers.length > 0))">{{$t('IMEI_SN')}} : {{ detail_invoice.imei_number || (detail_invoice.serial_numbers ? detail_invoice.serial_numbers.join(', ') : '') }}</span>
                       <br>
                       <small>{{formatNumber(detail_invoice.quantity,2)}} {{detail_invoice.unit_sale}} x {{ formatPriceDisplay(detail_invoice.total/detail_invoice.quantity,2) }}</small>
                     </td>
@@ -1506,8 +1506,8 @@
                       {{detail_invoice.name}}
                       <br v-if="Number(detail_invoice.tax_percent || detail_invoice.tax_rate || 0) > 0">
                       <small v-if="Number(detail_invoice.tax_percent || detail_invoice.tax_rate || 0) > 0">VAT @ {{ formatNumber(Number(detail_invoice.tax_percent || detail_invoice.tax_rate || 0),2) }}% ({{ formatPriceDisplay(detail_invoice.total * Number(detail_invoice.tax_percent || detail_invoice.tax_rate || 0) / 100, 2) }})</small>
-                      <br v-show="detail_invoice.is_imei && detail_invoice.imei_number !==null">
-                      <span v-show="detail_invoice.is_imei && detail_invoice.imei_number !==null ">IMEI/SN الرقم التسلسلي : {{detail_invoice.imei_number}}</span>
+                      <br v-show="(detail_invoice.is_imei || detail_invoice.enable_serial_tracking || (detail_invoice.serial_numbers && detail_invoice.serial_numbers.length > 0)) && (detail_invoice.imei_number || (detail_invoice.serial_numbers && detail_invoice.serial_numbers.length > 0))">
+                      <span v-show="(detail_invoice.is_imei || detail_invoice.enable_serial_tracking || (detail_invoice.serial_numbers && detail_invoice.serial_numbers.length > 0)) && (detail_invoice.imei_number || (detail_invoice.serial_numbers && detail_invoice.serial_numbers.length > 0))">IMEI/SN الرقم التسلسلي : {{ detail_invoice.imei_number || (detail_invoice.serial_numbers ? detail_invoice.serial_numbers.join(', ') : '') }}</span>
                     </td>
                     <td style="text-align:center">{{formatNumber(detail_invoice.quantity,2)}} {{detail_invoice.unit_sale}}</td>
                     <td style="text-align:center">{{ formatPriceDisplay(detail_invoice.total/detail_invoice.quantity,2) }}</td>
@@ -5231,6 +5231,7 @@ export default {
         .map(s => s.trim())
         .filter(s => s.length > 0);
       this.$set(item, 'serial_numbers', serials);
+      this.$set(item, 'imei_number', serials.join(', '));
     },
 
     // Toggle between retail and wholesale price baselines and recompute amounts
@@ -8046,15 +8047,21 @@ export default {
           };
 
           // Map details into invoice shape
-          const details = Array.isArray(payload.details) ? payload.details.map(d => ({
-            name: d.name,
-            quantity: d.quantity,
-            unit_sale: d.unitSale || d.unit_sale || '',
-            total: d.subtotal != null ? d.subtotal : (d.total != null ? d.total : (d.Net_price || 0) * (d.quantity || 0)),
-            is_imei: d.is_imei,
-            imei_number: d.imei_number,
-            serial_numbers: d.serial_numbers || []
-          })) : [];
+          const details = Array.isArray(payload.details) ? payload.details.map(d => {
+            let imei = d.imei_number;
+            if (Array.isArray(d.serial_numbers) && d.serial_numbers.length > 0) {
+              imei = d.serial_numbers.join(', ');
+            }
+            return {
+              name: d.name,
+              quantity: d.quantity,
+              unit_sale: d.unitSale || d.unit_sale || '',
+              total: d.subtotal != null ? d.subtotal : (d.total != null ? d.total : (d.Net_price || 0) * (d.quantity || 0)),
+              is_imei: d.is_imei || d.enable_serial_tracking || (d.serial_numbers && d.serial_numbers.length > 0) || Boolean(imei),
+              imei_number: imei || '',
+              serial_numbers: d.serial_numbers || []
+            };
+          }) : [];
 
           // Map payments into invoice shape
           const payments = Array.isArray(payload.payments) ? payload.payments.map(p => {

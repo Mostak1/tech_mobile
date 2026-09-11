@@ -284,9 +284,17 @@ class SalesController extends BaseController
                 if (is_array($rawImei)) {
                     $rawImei = implode(', ', array_filter($rawImei));
                 }
-                if ((empty($rawImei) || trim((string)$rawImei) === '') && !empty($value['serial_numbers'])) {
+                $serialsArr = [];
+                if (!empty($value['serial_numbers'])) {
                     $serialsArr = is_array($value['serial_numbers']) ? $value['serial_numbers'] : explode(',', (string)$value['serial_numbers']);
-                    $rawImei = implode(', ', array_filter(array_map('trim', $serialsArr)));
+                    $serialsArr = array_filter(array_map('trim', $serialsArr));
+                }
+                if (!empty($rawImei)) {
+                    $imeiArr = array_filter(array_map('trim', explode(',', (string)$rawImei)));
+                    $combined = array_unique(array_merge($imeiArr, $serialsArr));
+                    $rawImei = implode(', ', $combined);
+                } else if (!empty($serialsArr)) {
+                    $rawImei = implode(', ', $serialsArr);
                 }
 
                 $orderDetails[] = array_merge([
@@ -719,7 +727,23 @@ class SalesController extends BaseController
                         $orderDetails['product_id'] = $prod_detail['product_id'];
                         $orderDetails['product_variant_id'] = $prod_detail['product_variant_id'];
                         $orderDetails['total'] = $prod_detail['subtotal'];
-                        $orderDetails['imei_number'] = $prod_detail['imei_number'];
+                        $rawImei = $prod_detail['imei_number'] ?? null;
+                        if (is_array($rawImei)) {
+                            $rawImei = implode(', ', array_filter($rawImei));
+                        }
+                        $serialsArr = [];
+                        if (!empty($prod_detail['serial_numbers'])) {
+                            $serialsArr = is_array($prod_detail['serial_numbers']) ? $prod_detail['serial_numbers'] : explode(',', (string)$prod_detail['serial_numbers']);
+                            $serialsArr = array_filter(array_map('trim', $serialsArr));
+                        }
+                        if (!empty($rawImei)) {
+                            $imeiArr = array_filter(array_map('trim', explode(',', (string)$rawImei)));
+                            $combined = array_unique(array_merge($imeiArr, $serialsArr));
+                            $rawImei = implode(', ', $combined);
+                        } else if (!empty($serialsArr)) {
+                            $rawImei = implode(', ', $serialsArr);
+                        }
+                        $orderDetails['imei_number'] = is_string($rawImei) && trim($rawImei) !== '' ? trim($rawImei) : null;
 
                         $baseDate = ! empty($request['date']) ? \Carbon\Carbon::parse($request['date']) : now();
                         $wg = SaleDetail::computeWarrantyGuaranteeDates($product, $baseDate);
@@ -1431,8 +1455,6 @@ class SalesController extends BaseController
                 $data['taxe'] = $detail->price - $data['Net_price'] - $data['DiscountNet'];
             }
 
-            $data['is_imei'] = $detail['product']['is_imei'];
-            $data['imei_number'] = $detail->imei_number;
             $data['is_batch_tracked'] = (bool) ($detail['product']['is_batch_tracked'] ?? false);
             $data['batches'] = $saleBatchesByDetail[(int) $detail->id] ?? [];
 
@@ -1441,6 +1463,15 @@ class SalesController extends BaseController
             $data['serial_numbers'] = \App\Models\ProductSerialNumber::where('sold_sell_line_id', $detail->id)
                 ->pluck('serial_no')
                 ->toArray();
+
+            $imeiStr = $detail->imei_number ?? '';
+            if (!empty($data['serial_numbers'])) {
+                $existing = !empty($imeiStr) ? array_map('trim', explode(',', $imeiStr)) : [];
+                $combined = array_unique(array_merge($existing, $data['serial_numbers']));
+                $imeiStr = implode(', ', $combined);
+            }
+            $data['is_imei'] = (bool) ($detail['product']['is_imei'] || $data['enable_serial_tracking'] || !empty($imeiStr));
+            $data['imei_number'] = $imeiStr;
 
             $details[] = $data;
         }
@@ -1521,8 +1552,15 @@ class SalesController extends BaseController
             $data['total'] = number_format($detail->total, 2, '.', '');
             $data['unit_sale'] = $unit ? $unit->ShortName : '';
 
-            $data['is_imei'] = $detail['product']['is_imei'];
-            $data['imei_number'] = $detail->imei_number;
+            $snList = \App\Models\ProductSerialNumber::where('sold_sell_line_id', $detail->id)->pluck('serial_no')->toArray();
+            $imeiStr = $detail->imei_number ?? '';
+            if (!empty($snList)) {
+                $existing = !empty($imeiStr) ? array_map('trim', explode(',', $imeiStr)) : [];
+                $combined = array_unique(array_merge($existing, $snList));
+                $imeiStr = implode(', ', $combined);
+            }
+            $data['is_imei'] = (bool) ($detail['product']['is_imei'] || ($detail['product']['enable_serial_tracking'] ?? false) || !empty($imeiStr));
+            $data['imei_number'] = $imeiStr;
 
             $details[] = $data;
         }
@@ -2379,8 +2417,15 @@ class SalesController extends BaseController
                 $data['taxe'] = number_format($detail->price - $data['Net_price'] - $data['DiscountNet'], 2, '.', '');
             }
 
-            $data['is_imei'] = $detail['product']['is_imei'];
-            $data['imei_number'] = $detail->imei_number;
+            $snList = \App\Models\ProductSerialNumber::where('sold_sell_line_id', $detail->id)->pluck('serial_no')->toArray();
+            $imeiStr = $detail->imei_number ?? '';
+            if (!empty($snList)) {
+                $existing = !empty($imeiStr) ? array_map('trim', explode(',', $imeiStr)) : [];
+                $combined = array_unique(array_merge($existing, $snList));
+                $imeiStr = implode(', ', $combined);
+            }
+            $data['is_imei'] = (bool) ($detail['product']['is_imei'] || ($detail['product']['enable_serial_tracking'] ?? false) || !empty($imeiStr));
+            $data['imei_number'] = $imeiStr;
 
             $details[] = $data;
         }
@@ -2497,8 +2542,15 @@ class SalesController extends BaseController
                 $data['taxe'] = number_format($detail->price - $data['Net_price'] - $data['DiscountNet'], 2, '.', '');
             }
 
-            $data['is_imei'] = $detail['product']['is_imei'];
-            $data['imei_number'] = $detail->imei_number;
+            $snList = \App\Models\ProductSerialNumber::where('sold_sell_line_id', $detail->id)->pluck('serial_no')->toArray();
+            $imeiStr = $detail->imei_number ?? '';
+            if (!empty($snList)) {
+                $existing = !empty($imeiStr) ? array_map('trim', explode(',', $imeiStr)) : [];
+                $combined = array_unique(array_merge($existing, $snList));
+                $imeiStr = implode(', ', $combined);
+            }
+            $data['is_imei'] = (bool) ($detail['product']['is_imei'] || ($detail['product']['enable_serial_tracking'] ?? false) || !empty($imeiStr));
+            $data['imei_number'] = $imeiStr;
 
             $details[] = $data;
         }

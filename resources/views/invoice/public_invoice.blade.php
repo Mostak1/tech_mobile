@@ -163,7 +163,12 @@
             <tbody>
                 @foreach($details as $d)
                 <tr>
-                    <td>{{ $d['name'] }}</td>
+                    <td>
+                        {{ $d['name'] }}
+                        @if(!empty($d['imei_number']))
+                            <div style="font-size: 11px; color: #d84315;">S/N: {{ $d['imei_number'] }}</div>
+                        @endif
+                    </td>
                     <td>{{ number_format($d['quantity'], 2) }} {{ $d['unit_sale'] }}</td>
                     <td>{{ number_format($d['total'] / max($d['quantity'], 1), 2) }}</td>
                     <td>{{ number_format($d['total'], 2) }}</td>
