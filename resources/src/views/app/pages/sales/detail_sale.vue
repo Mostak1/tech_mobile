@@ -168,7 +168,7 @@
                 <td class="invoice-product-name-cell">
                   <div class="invoice-product-name">{{detail.name}}</div>
                   <div class="invoice-product-code">Code: {{detail.code}}</div>
-                  <div v-if="detail.is_imei && detail.imei_number !== null" class="invoice-product-imei">SN: {{detail.imei_number}}</div>
+                  <div v-if="(detail.is_imei || detail.enable_serial_tracking || (detail.serial_numbers && detail.serial_numbers.length > 0)) && (detail.imei_number || (detail.serial_numbers && detail.serial_numbers.length > 0))" class="invoice-product-imei">SN: {{ detail.imei_number || (detail.serial_numbers ? detail.serial_numbers.join(', ') : '') }}</div>
                   <div v-if="detail.is_batch_tracked && (detail.batches || []).length > 0" class="invoice-product-batches">
                     <div class="invoice-product-batches-title">{{ $t('Batches') || 'Batches' }}</div>
                     <div class="invoice-product-batch-chips">
@@ -206,9 +206,9 @@
                   <span class="invoice-product-card-label">Code:</span>
                   <span class="invoice-product-card-value">{{detail.code}}</span>
                 </div>
-                <div v-if="detail.is_imei && detail.imei_number !== null" class="invoice-product-card-row">
+                <div v-if="(detail.is_imei || detail.enable_serial_tracking || (detail.serial_numbers && detail.serial_numbers.length > 0)) && (detail.imei_number || (detail.serial_numbers && detail.serial_numbers.length > 0))" class="invoice-product-card-row">
                   <span class="invoice-product-card-label">SN:</span>
-                  <span class="invoice-product-card-value">{{detail.imei_number}}</span>
+                  <span class="invoice-product-card-value">{{ detail.imei_number || (detail.serial_numbers ? detail.serial_numbers.join(', ') : '') }}</span>
                 </div>
                 <div v-if="detail.is_batch_tracked && (detail.batches || []).length > 0" class="invoice-product-card-batches">
                   <div class="invoice-product-batches-title">{{ $t('Batches') || 'Batches' }}</div>

@@ -169,9 +169,17 @@ class PosController extends BaseController
                     if (is_array($rawImei)) {
                         $rawImei = implode(', ', array_filter($rawImei));
                     }
-                    if ((empty($rawImei) || trim((string)$rawImei) === '') && !empty($value['serial_numbers'])) {
+                    $serialsArr = [];
+                    if (!empty($value['serial_numbers'])) {
                         $serialsArr = is_array($value['serial_numbers']) ? $value['serial_numbers'] : explode(',', (string)$value['serial_numbers']);
-                        $rawImei = implode(', ', array_filter(array_map('trim', $serialsArr)));
+                        $serialsArr = array_filter(array_map('trim', $serialsArr));
+                    }
+                    if (!empty($rawImei)) {
+                        $imeiArr = array_filter(array_map('trim', explode(',', (string)$rawImei)));
+                        $combined = array_unique(array_merge($imeiArr, $serialsArr));
+                        $rawImei = implode(', ', $combined);
+                    } else if (!empty($serialsArr)) {
+                        $rawImei = implode(', ', $serialsArr);
                     }
 
                     $orderDetails[] = array_merge([
@@ -1485,8 +1493,15 @@ class PosController extends BaseController
             $data['etat'] = 'current';
             $data['unitSale'] = $unit ? $unit->ShortName : '';
             $data['sale_unit_id'] = $unit ? $unit->id : '';
-            $data['is_imei'] = $detail['product']['is_imei'];
-            $data['imei_number'] = $detail->imei_number;
+            $snList = \App\Models\ProductSerialNumber::where('sold_sell_line_id', $detail->id)->pluck('serial_no')->toArray();
+            $imeiStr = $detail->imei_number ?? '';
+            if (!empty($snList)) {
+                $existing = !empty($imeiStr) ? array_map('trim', explode(',', $imeiStr)) : [];
+                $combined = array_unique(array_merge($existing, $snList));
+                $imeiStr = implode(', ', $combined);
+            }
+            $data['is_imei'] = (bool) ($detail['product']['is_imei'] || ($detail['product']['enable_serial_tracking'] ?? false) || !empty($imeiStr));
+            $data['imei_number'] = $imeiStr;
             $data['subtotal'] = $detail->total;
 
             if ($detail->discount_method == '2') {

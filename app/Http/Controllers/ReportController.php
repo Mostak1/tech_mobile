@@ -5534,6 +5534,8 @@ class ReportController extends BaseController
             ->orderBy($order, $dir)
             ->get();
 
+        $serialService = app(\App\Services\SerialTrackingService::class);
+
         foreach ($sale_details as $detail) {
 
             // check if detail has sale_unit_id Or Null
@@ -5544,27 +5546,17 @@ class ReportController extends BaseController
                     ->where('id', $detail->product_id)
                     ->first();
 
-                if ($product_unit_sale_id['unitSale']) {
+                if ($product_unit_sale_id && $product_unit_sale_id['unitSale']) {
                     $unit = Unit::where('id', $product_unit_sale_id['unitSale']->id)->first();
+                } else {
+                    $unit = null;
                 }
-                $unit = null;
             }
 
-            $baseCost = $detail->productVariant
-                ? (float) $detail->productVariant->cost
-                : (float) optional($detail->product)->cost;
-
-            $unitCost = $baseCost;
-            $saleUnit = $detail->saleUnit;
-            if (!$saleUnit && $detail->sale_unit_id !== null) {
-                $saleUnit = Unit::find($detail->sale_unit_id);
-            }
-            if ($saleUnit && (float) $saleUnit->operator_value > 0) {
-                $operatorValue = (float) $saleUnit->operator_value;
-                $unitCost = $saleUnit->operator === '/'
-                    ? $baseCost / $operatorValue
-                    : $baseCost * $operatorValue;
-            }
+            $saleDate = $detail->date ?? optional($detail->sale)->date ?? date('Y-m-d');
+            $costRes = $serialService->getSaleDetailPurchaseCost($detail, $saleDate);
+            $unitCost = $costRes['unit_cost'];
+            $totalCost = $costRes['total_cost'];
 
             $imeiSuffix = '';
             if (!empty($detail->imei_number)) {
@@ -5598,7 +5590,7 @@ class ReportController extends BaseController
             $item['unit_sale'] = $unit ? $unit->ShortName : '';
             $item['purchase_price'] = round($unitCost, 2);
             $item['sell_price'] = $detail->price;
-            $item['profit'] = round((float) $detail->total - ($unitCost * (float) $detail->quantity), 2);
+            $item['profit'] = round((float) $detail->total - $totalCost, 2);
 
             $data[] = $item;
         }

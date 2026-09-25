@@ -407,8 +407,8 @@
                     <td style="text-align: center; font-weight: bold;">{{ sprintf('%02d', $itemNum) }}</td>
                     <td style="text-align: left; padding-left: 10px;">
                         <div style="font-weight: bold; color: #111111;">{{ $detail['name'] }}</div>
-                        @if($detail['is_imei'] && !empty($detail['imei_number']))
-                            <div style="font-size: 8pt; color: #d84315; font-weight: bold; margin-top: 1px;">S/N: {{ $detail['imei_number'] }}</div>
+                        @if((!empty($detail['is_imei']) || !empty($detail['enable_serial_tracking']) || !empty($detail['serial_numbers'])) && !empty($detail['imei_number']))
+                            <div style="font-size: 8pt; color: #d84315; font-weight: bold; margin-top: 1px; word-break: break-all;">S/N: {{ $detail['imei_number'] }}</div>
                         @endif
                     </td>
                     <td style="text-align: center;">{{ formatPrice((float)$detail['price'], 2, $priceFormat) }}</td>
