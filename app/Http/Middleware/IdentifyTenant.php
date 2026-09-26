@@ -77,7 +77,10 @@ class IdentifyTenant
      */
     protected function isCentralDomain(string $subdomain): bool
     {
-        $centralDomains = ['www', 'admin', 'central', 'landlord', 'app'];
+        $envCentral = array_filter(array_map('trim', explode(',', env('CENTRAL_SUBDOMAINS', ''))));
+        $defaultCentral = ['www', 'admin', 'central', 'landlord', 'app', 'pos', 'main'];
+        $centralDomains = array_merge($defaultCentral, $envCentral);
+
         return in_array(strtolower($subdomain), $centralDomains, true);
     }
 }

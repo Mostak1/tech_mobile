@@ -62,7 +62,7 @@ return [
             'url' => env('LANDLORD_DATABASE_URL'),
             'host' => env('DB_LANDLORD_HOST', env('DB_HOST', '127.0.0.1')),
             'port' => env('DB_LANDLORD_PORT', env('DB_PORT', '3306')),
-            'database' => env('DB_LANDLORD_DATABASE', 'landlord_database'),
+            'database' => env('DB_LANDLORD_DATABASE', env('DB_DATABASE', 'landlord_database')),
             'username' => env('DB_LANDLORD_USERNAME', env('DB_USERNAME', 'forge')),
             'password' => env('DB_LANDLORD_PASSWORD', env('DB_PASSWORD', '')),
             'charset' => 'utf8mb4',
