@@ -25,19 +25,24 @@ class TenantConnectionManager
     {
         static::$currentTenant = $tenant;
 
-        // Decrypt password if encrypted, or use plain password
-        $password = $tenant->database_password;
-        try {
-            $password = Crypt::decryptString($tenant->database_password);
-        } catch (\Exception $e) {
-            // Raw password fallback
+        // Resolve database username (fallback to master DB_USERNAME if empty)
+        $username = !empty($tenant->database_username) ? $tenant->database_username : env('DB_USERNAME', 'root');
+
+        // Resolve database password (fallback to master DB_PASSWORD if empty)
+        $password = env('DB_PASSWORD', '');
+        if (!empty($tenant->database_password)) {
+            try {
+                $password = Crypt::decryptString($tenant->database_password);
+            } catch (\Exception $e) {
+                $password = $tenant->database_password; // Raw password fallback
+            }
         }
 
         // Configure dynamic tenant DB connection
         Config::set('database.connections.tenant.host', env('DB_HOST', '127.0.0.1'));
         Config::set('database.connections.tenant.port', env('DB_PORT', '3306'));
         Config::set('database.connections.tenant.database', $tenant->database_name);
-        Config::set('database.connections.tenant.username', $tenant->database_username);
+        Config::set('database.connections.tenant.username', $username);
         Config::set('database.connections.tenant.password', $password);
 
         // Purge any stale connection and reconnect
