@@ -480,3 +480,18 @@ Route::get('/customer-display', function (HttpRequest $request) {
 
     return view('customer_display');
 })->middleware(['web']);
+
+// -------------------- Landlord Multi-Tenant Management Routes --------------------
+Route::prefix('landlord')->middleware(['web'])->group(function () {
+    // Step 1: Initialize Landlord Database Table (Run Landlord Migration) -> GET /landlord/init-db
+    Route::get('/init-db', [App\Http\Controllers\LandlordTenantController::class, 'initLandlordDb']);
+
+    // List All Active Tenants -> GET /landlord/tenants
+    Route::get('/tenants', [App\Http\Controllers\LandlordTenantController::class, 'index']);
+
+    // Step 2: Create / Provision New Tenant Subdomain & DB -> POST/GET /landlord/tenants/create
+    Route::match(['get', 'post'], '/tenants/create', [App\Http\Controllers\LandlordTenantController::class, 'createTenant']);
+
+    // Run Migrations Across All Tenant Databases -> GET /landlord/migrate-tenants
+    Route::get('/migrate-tenants', [App\Http\Controllers\LandlordTenantController::class, 'migrateTenants']);
+});

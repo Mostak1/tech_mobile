@@ -57,6 +57,31 @@ return [
             ]) : [],
         ],
 
+        'landlord' => [
+            'driver' => 'mysql',
+            'url' => env('LANDLORD_DATABASE_URL'),
+            'host' => env('DB_LANDLORD_HOST', env('DB_HOST', '127.0.0.1')),
+            'port' => env('DB_LANDLORD_PORT', env('DB_PORT', '3306')),
+            'database' => env('DB_LANDLORD_DATABASE', 'landlord_database'),
+            'username' => env('DB_LANDLORD_USERNAME', env('DB_USERNAME', 'forge')),
+            'password' => env('DB_LANDLORD_PASSWORD', env('DB_PASSWORD', '')),
+            'charset' => 'utf8mb4',
+            'strict' => false,
+            'engine' => 'InnoDB',
+        ],
+
+        'tenant' => [
+            'driver' => 'mysql',
+            'host' => env('DB_HOST', '127.0.0.1'),
+            'port' => env('DB_PORT', '3306'),
+            'database' => null,
+            'username' => null,
+            'password' => null,
+            'charset' => 'utf8mb4',
+            'strict' => false,
+            'engine' => 'InnoDB',
+        ],
+
         'pgsql' => [
             'driver' => 'pgsql',
             'url' => env('DATABASE_URL'),
