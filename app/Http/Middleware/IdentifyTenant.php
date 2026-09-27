@@ -22,24 +22,44 @@ class IdentifyTenant
         $host = $request->getHost();
         $subdomain = $this->extractSubdomain($host);
 
-        // System/Central routes or IPs bypass tenant identification
+        if (!empty($subdomain)) {
+            // First check if a matching tenant exists in Landlord DB
+            $tenant = Cache::store('file')->remember('landlord_tenant_' . $subdomain, 300, function () use ($subdomain) {
+                return Tenant::on('landlord')->where('subdomain', $subdomain)->where('status', 'active')->first();
+            });
+
+            // If tenant record exists, activate dynamic tenant DB context
+            if ($tenant) {
+                app(TenantConnectionManager::class)->setTenant($tenant);
+                return $next($request);
+            }
+        }
+
+        // System/Central routes or IPs bypass tenant identification if no tenant matched
         if (empty($subdomain) || $this->isCentralDomain($subdomain)) {
-            return $next($request);
+            // Allow all /landlord routes to execute against Landlord DB
+            if ($request->is('landlord') || $request->is('landlord/*') || $request->is('api/landlord/*')) {
+                return $next($request);
+            }
+
+            // Optional: If DEFAULT_TENANT_SUBDOMAIN is configured in .env, bind default tenant for central domain
+            $defaultSubdomain = env('DEFAULT_TENANT_SUBDOMAIN');
+            if (!empty($defaultSubdomain)) {
+                $tenant = Cache::store('file')->remember('landlord_tenant_' . $defaultSubdomain, 300, function () use ($defaultSubdomain) {
+                    return Tenant::on('landlord')->where('subdomain', $defaultSubdomain)->where('status', 'active')->first();
+                });
+
+                if ($tenant) {
+                    app(TenantConnectionManager::class)->setTenant($tenant);
+                    return $next($request);
+                }
+            }
+
+            // On Central Landlord Domain without tenant prefix, redirect to Landlord Tenants Dashboard
+            return redirect('/landlord/tenants');
         }
 
-        // Cache tenant metadata lookup for 300s to avoid central DB bottleneck on every hit
-        $tenant = Cache::store('file')->remember('landlord_tenant_' . $subdomain, 300, function () use ($subdomain) {
-            return Tenant::on('landlord')->where('subdomain', $subdomain)->where('status', 'active')->first();
-        });
-
-        if (!$tenant) {
-            abort(404, "Tenant account [{$subdomain}] does not exist or is suspended.");
-        }
-
-        // Activate dynamic tenant DB, Cache prefix, Session cookie, and Storage paths
-        app(TenantConnectionManager::class)->setTenant($tenant);
-
-        return $next($request);
+        abort(404, "Tenant account [{$subdomain}] does not exist or is suspended.");
     }
 
     /**
