@@ -47,13 +47,22 @@ class AppServiceProvider extends ServiceProvider
                 'update',
                 'password',
                 'online_store',
+                'landlord',
             ];
 
             $firstSegment = Request::segment(1); // Get the first segment of the URL
 
             if (! in_array($firstSegment, $excluded)) {
-                $view->with('app_settings', Setting::first());
-                $view->with('categories', \App\Models\Category::with('subcategories')->orderBy('name')->get());
+                try {
+                    if (Schema::hasTable('settings')) {
+                        $view->with('app_settings', Setting::first());
+                    }
+                    if (Schema::hasTable('categories')) {
+                        $view->with('categories', \App\Models\Category::with('subcategories')->orderBy('name')->get());
+                    }
+                } catch (\Throwable $e) {
+                    // Gracefully ignore missing table errors
+                }
             }
         });
 
