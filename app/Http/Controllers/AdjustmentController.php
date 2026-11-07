@@ -153,7 +153,9 @@ class AdjustmentController extends BaseController
                             $unit_qty = $combined_product->quantity;
 
                             if ($unit_qty * $value['quantity'] > $total_stock->qte) {
-                                $fail('stock insuffisant pour le produit '.' '.$product_detail->name);
+                                $avail = $total_stock ? $total_stock->qte : 0;
+                                $req = $unit_qty * $value['quantity'];
+                                $fail("Insufficient stock for Product: {$product_detail->name}, SKU: {$product_detail->code}. Required: {$req}, Available: {$avail}.");
 
                                 return;
                             }
@@ -172,13 +174,26 @@ class AdjustmentController extends BaseController
             'warehouse_id.required' => 'Warehouse is required',
         ]);
 
+        $validationService = app(\App\Services\TransactionValidationService::class);
+        $stockErrors = $validationService->validateAdjustmentStock($request['details'], (int) $request->warehouse_id);
+        if (!empty($stockErrors)) {
+            return response()->json([
+                'success' => false,
+                'title' => 'Insufficient Stock',
+                'message' => implode("\n", $stockErrors),
+                'errors' => $stockErrors,
+            ], 422);
+        }
+
         $serialService = app(\App\Services\SerialTrackingService::class);
         if ($serialService->isSupported()) {
             $serialErrors = $serialService->validateAdjustment($request['details'], (int) $request->warehouse_id);
             if (!empty($serialErrors)) {
                 return response()->json([
                     'success' => false,
-                    'message' => implode(' ', $serialErrors),
+                    'title' => 'Serial Validation Failed',
+                    'message' => implode("\n", $serialErrors),
+                    'errors' => $serialErrors,
                 ], 422);
             }
         }
@@ -405,13 +420,26 @@ class AdjustmentController extends BaseController
             $this->authorizeForUser($request->user('api'), 'check_record', $current_adjustment);
         }
 
+        $validationService = app(\App\Services\TransactionValidationService::class);
+        $stockErrors = $validationService->validateAdjustmentStock($request['details'], (int) $request->warehouse_id);
+        if (!empty($stockErrors)) {
+            return response()->json([
+                'success' => false,
+                'title' => 'Insufficient Stock',
+                'message' => implode("\n", $stockErrors),
+                'errors' => $stockErrors,
+            ], 422);
+        }
+
         $serialService = app(\App\Services\SerialTrackingService::class);
         if ($serialService->isSupported()) {
             $serialErrors = $serialService->validateAdjustment($request['details'], (int) $request->warehouse_id);
             if (!empty($serialErrors)) {
                 return response()->json([
                     'success' => false,
-                    'message' => implode(' ', $serialErrors),
+                    'title' => 'Serial Validation Failed',
+                    'message' => implode("\n", $serialErrors),
+                    'errors' => $serialErrors,
                 ], 422);
             }
         }

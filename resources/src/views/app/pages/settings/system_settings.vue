@@ -561,11 +561,10 @@
                   <!-- Default Customer -->
                       <b-col lg="6" md="6" sm="12" class="mb-3">
                     <b-form-group :label="$t('DefaultCustomer')">
-                      <v-select
+                      <customer-select
                         v-model="setting.client_id"
-                        :reduce="label => label.value"
+                        :initial-options="clients"
                         :placeholder="$t('Choose_Customer')"
-                        :options="clients.map(clients => ({label: clients.name, value: clients.id}))"
                       />
                     </b-form-group>
                   </b-col>

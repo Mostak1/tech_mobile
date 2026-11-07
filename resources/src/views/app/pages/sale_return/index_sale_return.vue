@@ -197,11 +197,10 @@
           <!-- Customer  -->
           <b-col md="12">
             <b-form-group :label="$t('Customer')">
-              <v-select
-                :reduce="label => label.value"
-                :placeholder="$t('Choose_Customer')"
+              <customer-select
                 v-model="Filter_Client"
-                :options="customers.map(customers => ({label: customers.name, value: customers.id}))"
+                :placeholder="$t('Choose_Customer')"
+                :clearable="true"
               />
             </b-form-group>
           </b-col>

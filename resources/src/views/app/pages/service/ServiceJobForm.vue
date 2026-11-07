@@ -68,11 +68,8 @@
                       v-slot="validationContext"
                     >
                       <b-form-group :label="$t('Customer') + ' *'">
-                        <v-select
-                          :reduce="c => c.id"
+                        <customer-select
                           v-model="form.client_id"
-                          :options="clients"
-                          label="name"
                           :placeholder="$t('Choose_Customer')"
                           :class="{ 'is-invalid': validationContext.errors.length > 0 }"
                         />

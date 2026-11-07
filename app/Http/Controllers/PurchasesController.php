@@ -236,6 +236,11 @@ class PurchasesController extends BaseController
             $data = $request['details'];
             foreach ($data as $key => $value) {
                 $unit = Unit::where('id', $value['purchase_unit_id'])->first();
+                $imei = $value['imei_number'] ?? null;
+                if (empty($imei) && !empty($value['serial_numbers']) && is_array($value['serial_numbers'])) {
+                    $imei = implode(', ', array_filter(array_map('trim', $value['serial_numbers'])));
+                }
+
                 $orderDetails[] = [
                     'purchase_id' => $order->id,
                     'quantity' => $value['quantity'],
@@ -248,7 +253,7 @@ class PurchasesController extends BaseController
                     'product_id' => $value['product_id'],
                     'product_variant_id' => $value['product_variant_id'],
                     'total' => $value['subtotal'],
-                    'imei_number' => $value['imei_number'],
+                    'imei_number' => $imei,
                 ];
 
                 if ($order->statut == 'received') {
@@ -258,6 +263,16 @@ class PurchasesController extends BaseController
                             ->where('product_id', $value['product_id'])
                             ->where('product_variant_id', $value['product_variant_id'])
                             ->first();
+
+                        if (!$product_warehouse) {
+                            $product_warehouse = product_warehouse::firstOrCreate([
+                                'warehouse_id' => $order->warehouse_id,
+                                'product_id' => $value['product_id'],
+                                'product_variant_id' => $value['product_variant_id'],
+                            ], [
+                                'qte' => 0,
+                            ]);
+                        }
 
                         if ($unit && $product_warehouse) {
                             if ($unit->operator == '/') {
@@ -272,7 +287,18 @@ class PurchasesController extends BaseController
                         $product_warehouse = product_warehouse::where('deleted_at', '=', null)
                             ->where('warehouse_id', $order->warehouse_id)
                             ->where('product_id', $value['product_id'])
+                            ->where('product_variant_id', null)
                             ->first();
+
+                        if (!$product_warehouse) {
+                            $product_warehouse = product_warehouse::firstOrCreate([
+                                'warehouse_id' => $order->warehouse_id,
+                                'product_id' => $value['product_id'],
+                                'product_variant_id' => null,
+                            ], [
+                                'qte' => 0,
+                            ]);
+                        }
 
                         if ($unit && $product_warehouse) {
                             if ($unit->operator == '/') {
@@ -315,7 +341,7 @@ class PurchasesController extends BaseController
     {
         $this->authorizeForUser($request->user('api'), 'update', Purchase::class);
 
-        request()->validate([
+        $request->validate([
             'warehouse_id' => 'required',
             'supplier_id' => 'required',
         ]);
@@ -359,240 +385,298 @@ class PurchasesController extends BaseController
                 }
             }
 
-            if (PurchaseReturn::where('purchase_id', $id)->where('deleted_at', '=', null)->exists()) {
-                return response()->json(['success' => false, 'Return exist for the Transaction' => false], 403);
-            } else {
+            $returnIds = PurchaseReturn::where('purchase_id', $id)->whereNull('deleted_at')->pluck('id');
+            if ($returnIds->isNotEmpty()) {
+                $returnedQuantities = \App\Models\PurchaseReturnDetails::whereIn('purchase_return_id', $returnIds)
+                    ->whereNull('deleted_at')
+                    ->selectRaw('product_id, product_variant_id, sum(quantity) as total_returned')
+                    ->groupBy('product_id', 'product_variant_id')
+                    ->get();
 
-                // Check If User Has Permission view All Records
-                if (! $view_records) {
-                    // Check If User->id === Purchase->id
-                    $this->authorizeForUser($request->user('api'), 'check_record', $current_Purchase);
-                }
+                foreach ($returnedQuantities as $ret) {
+                    $matchingNewDetail = collect($request['details'])->first(function ($d) use ($ret) {
+                        return $d['product_id'] == $ret->product_id &&
+                            ($d['product_variant_id'] ?? null) == $ret->product_variant_id;
+                    });
 
-                $old_purchase_details = PurchaseDetail::where('purchase_id', $id)->get();
-                $new_purchase_details = $request['details'];
-                $length = count($new_purchase_details);
-
-                // Pharmacy: reverse all existing batch links for this purchase before
-                // re-applying. The legacy stock-adjustment block below already reverses
-                // and re-applies product_warehouse qte; we mirror that for batches.
-                $batchService = app(BatchService::class);
-                if ($batchService->isSupported()) {
-                    $batchService->reverseForPurchaseDetails($old_purchase_details);
-                }
-
-                // Serial tracking: reverse existing serial numbers
-                if ($serialService->isSupported()) {
-                    $serialService->reverseForPurchaseDetails($old_purchase_details);
-                }
-
-                // Get Ids for new Details
-                $new_products_id = [];
-                foreach ($new_purchase_details as $new_detail) {
-                    $new_products_id[] = $new_detail['id'];
-                }
-
-                // Init Data with old Parametre
-                $old_products_id = [];
-                foreach ($old_purchase_details as $key => $value) {
-                    $old_products_id[] = $value->id;
-
-                    // check if detail has purchase_unit_id Or Null
-                    if ($value['purchase_unit_id'] !== null) {
-                        $unit = Unit::where('id', $value['purchase_unit_id'])->first();
-                    } else {
-                        $product_unit_purchase_id = Product::with('unitPurchase')
-                            ->where('id', $value['product_id'])
-                            ->first();
-                        $unit = Unit::where('id', $product_unit_purchase_id['unitPurchase']->id)->first();
+                    if (!$matchingNewDetail || ($matchingNewDetail['quantity'] < $ret->total_returned)) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Quantity cannot be less than returned quantity (' . $ret->total_returned . ') for this product.',
+                        ], 422);
                     }
+                }
+            }
 
-                    if ($value['purchase_unit_id'] !== null) {
-                        if ($current_Purchase->statut == 'received') {
+            // Check If User Has Permission view All Records
+            if (! $view_records) {
+                // Check If User->id === Purchase->id
+                $this->authorizeForUser($request->user('api'), 'check_record', $current_Purchase);
+            }
 
-                            if ($value['product_variant_id'] !== null) {
-                                $product_warehouse = product_warehouse::where('deleted_at', '=', null)
-                                    ->where('warehouse_id', $current_Purchase->warehouse_id)
-                                    ->where('product_id', $value['product_id'])
-                                    ->where('product_variant_id', $value['product_variant_id'])
-                                    ->first();
+            $old_purchase_details = PurchaseDetail::where('purchase_id', $id)->get();
+            $new_purchase_details = $request['details'];
+            $length = count($new_purchase_details);
 
-                                if ($unit && $product_warehouse) {
-                                    if ($unit->operator == '/') {
-                                        $product_warehouse->qte -= $value['quantity'] / $unit->operator_value;
-                                    } else {
-                                        $product_warehouse->qte -= $value['quantity'] * $unit->operator_value;
-                                    }
+            // Pharmacy: reverse all existing batch links for this purchase before
+            // re-applying. The legacy stock-adjustment block below already reverses
+            // and re-applies product_warehouse qte; we mirror that for batches.
+            $batchService = app(BatchService::class);
+            if ($batchService->isSupported()) {
+                $batchService->reverseForPurchaseDetails($old_purchase_details);
+            }
 
-                                    $product_warehouse->save();
-                                }
-
-                            } else {
-                                $product_warehouse = product_warehouse::where('deleted_at', '=', null)
-                                    ->where('warehouse_id', $current_Purchase->warehouse_id)
-                                    ->where('product_id', $value['product_id'])
-                                    ->first();
-
-                                if ($unit && $product_warehouse) {
-                                    if ($unit->operator == '/') {
-                                        $product_warehouse->qte -= $value['quantity'] / $unit->operator_value;
-                                    } else {
-                                        $product_warehouse->qte -= $value['quantity'] * $unit->operator_value;
-                                    }
-
-                                    $product_warehouse->save();
-                                }
-                            }
+            // Serial tracking: reverse existing serial numbers
+            if ($serialService->isSupported()) {
+                $allNewSerials = [];
+                foreach ($new_purchase_details as $row) {
+                    if (!empty($row['serial_numbers']) && is_array($row['serial_numbers'])) {
+                        foreach ($row['serial_numbers'] as $s) {
+                            $s = trim($s);
+                            if ($s !== '') $allNewSerials[] = $s;
                         }
-
-                        // Delete Detail
-                        if (! in_array($old_products_id[$key], $new_products_id)) {
-                            $PurchaseDetail = PurchaseDetail::findOrFail($value->id);
-                            $PurchaseDetail->delete();
+                    } elseif (!empty($row['imei_number'])) {
+                        foreach ($serialService->parseSerials($row['imei_number']) as $s) {
+                            $s = trim($s);
+                            if ($s !== '') $allNewSerials[] = $s;
                         }
                     }
+                }
+                $serialService->reverseForPurchaseDetails($old_purchase_details, $allNewSerials);
+            }
 
+            // Get Ids for new Details
+            $new_products_id = [];
+            foreach ($new_purchase_details as $new_detail) {
+                $new_products_id[] = $new_detail['id'];
+            }
+
+            // Init Data with old Parametre
+            $old_products_id = [];
+            foreach ($old_purchase_details as $key => $value) {
+                $old_products_id[] = $value->id;
+
+                // check if detail has purchase_unit_id Or Null
+                if ($value['purchase_unit_id'] !== null) {
+                    $unit = Unit::where('id', $value['purchase_unit_id'])->first();
+                } else {
+                    $product_unit_purchase_id = Product::with('unitPurchase')
+                        ->where('id', $value['product_id'])
+                        ->first();
+                    $unit = Unit::where('id', $product_unit_purchase_id['unitPurchase']->id)->first();
                 }
 
-                // Update Data with New request
-                foreach ($new_purchase_details as $key => $prod_detail) {
+                if ($value['purchase_unit_id'] !== null) {
+                    if ($current_Purchase->statut == 'received') {
 
-                    if ($prod_detail['no_unit'] !== 0) {
-                        $unit_prod = Unit::where('id', $prod_detail['purchase_unit_id'])->first();
+                        if ($value['product_variant_id'] !== null) {
+                            $product_warehouse = product_warehouse::where('deleted_at', '=', null)
+                                ->where('warehouse_id', $current_Purchase->warehouse_id)
+                                ->where('product_id', $value['product_id'])
+                                ->where('product_variant_id', $value['product_variant_id'])
+                                ->first();
 
-                        if ($request['statut'] == 'received') {
-
-                            if ($prod_detail['product_variant_id'] !== null) {
-                                $product_warehouse = product_warehouse::where('deleted_at', '=', null)
-                                    ->where('warehouse_id', $request->warehouse_id)
-                                    ->where('product_id', $prod_detail['product_id'])
-                                    ->where('product_variant_id', $prod_detail['product_variant_id'])
-                                    ->first();
-
-                                if ($unit_prod && $product_warehouse) {
-                                    if ($unit_prod->operator == '/') {
-                                        $product_warehouse->qte += $prod_detail['quantity'] / $unit_prod->operator_value;
-                                    } else {
-                                        $product_warehouse->qte += $prod_detail['quantity'] * $unit_prod->operator_value;
-                                    }
-
-                                    $product_warehouse->save();
+                            if ($unit && $product_warehouse) {
+                                if ($unit->operator == '/') {
+                                    $product_warehouse->qte -= $value['quantity'] / $unit->operator_value;
+                                } else {
+                                    $product_warehouse->qte -= $value['quantity'] * $unit->operator_value;
                                 }
 
-                            } else {
-                                $product_warehouse = product_warehouse::where('deleted_at', '=', null)
-                                    ->where('warehouse_id', $request->warehouse_id)
-                                    ->where('product_id', $prod_detail['product_id'])
-                                    ->first();
-
-                                if ($unit_prod && $product_warehouse) {
-                                    if ($unit_prod->operator == '/') {
-                                        $product_warehouse->qte += $prod_detail['quantity'] / $unit_prod->operator_value;
-                                    } else {
-                                        $product_warehouse->qte += $prod_detail['quantity'] * $unit_prod->operator_value;
-                                    }
-
-                                    $product_warehouse->save();
-                                }
+                                $product_warehouse->save();
                             }
 
-                        }
-
-                        $orderDetails['purchase_id'] = $id;
-                        $orderDetails['cost'] = $prod_detail['Unit_cost'];
-                        $orderDetails['purchase_unit_id'] = $prod_detail['purchase_unit_id'];
-                        $orderDetails['TaxNet'] = $prod_detail['tax_percent'];
-                        $orderDetails['tax_method'] = $prod_detail['tax_method'];
-                        $orderDetails['discount'] = $prod_detail['discount'];
-                        $orderDetails['discount_method'] = $prod_detail['discount_Method'];
-                        $orderDetails['quantity'] = $prod_detail['quantity'];
-                        $orderDetails['product_id'] = $prod_detail['product_id'];
-                        $orderDetails['product_variant_id'] = $prod_detail['product_variant_id'];
-                        $orderDetails['total'] = $prod_detail['subtotal'];
-                        $orderDetails['imei_number'] = $prod_detail['imei_number'];
-
-                        if (! in_array($prod_detail['id'], $old_products_id)) {
-                            PurchaseDetail::Create($orderDetails);
                         } else {
-                            PurchaseDetail::where('id', $prod_detail['id'])->update($orderDetails);
+                            $product_warehouse = product_warehouse::where('deleted_at', '=', null)
+                                ->where('warehouse_id', $current_Purchase->warehouse_id)
+                                ->where('product_id', $value['product_id'])
+                                ->first();
+
+                            if ($unit && $product_warehouse) {
+                                if ($unit->operator == '/') {
+                                    $product_warehouse->qte -= $value['quantity'] / $unit->operator_value;
+                                } else {
+                                    $product_warehouse->qte -= $value['quantity'] * $unit->operator_value;
+                                }
+
+                                $product_warehouse->save();
+                            }
                         }
                     }
+
+                    // Delete Detail
+                    if (! in_array($old_products_id[$key], $new_products_id)) {
+                        $PurchaseDetail = PurchaseDetail::findOrFail($value->id);
+                        $PurchaseDetail->delete();
+                    }
                 }
 
-                $due = $request['GrandTotal'] - $current_Purchase->paid_amount;
-                if ($due === 0.0 || $due < 0.0) {
-                    $payment_statut = 'paid';
-                } elseif ($due != $request['GrandTotal']) {
-                    $payment_statut = 'partial';
-                } elseif ($due == $request['GrandTotal']) {
-                    $payment_statut = 'unpaid';
-                }
+            }
 
-                $current_Purchase->update([
-                    'date' => $request['date'],
-                    'provider_id' => $request['supplier_id'],
-                    'warehouse_id' => $request['warehouse_id'],
-                    'notes' => $request['notes'],
-                    'tax_rate' => $request['tax_rate'],
-                    'TaxNet' => $request['TaxNet'],
-                    'discount' => $request['discount'],
-                    'shipping' => $request['shipping'],
-                    'statut' => $request['statut'],
-                    'GrandTotal' => $request['GrandTotal'],
-                    'payment_statut' => $payment_statut,
-                ]);
+            // Update Data with New request
+            foreach ($new_purchase_details as $key => $prod_detail) {
 
-                // Pharmacy: re-apply batches to the now-persisted PurchaseDetail rows.
-                if ($batchService->isSupported() && $current_Purchase->statut == 'received') {
-                    // Build aligned arrays: skip rows the controller skipped (no_unit === 0).
-                    $alignedInput = [];
-                    foreach ($new_purchase_details as $row) {
-                        if (($row['no_unit'] ?? 1) !== 0) {
-                            $alignedInput[] = $row;
+                if ($prod_detail['no_unit'] !== 0) {
+                    $unit_prod = Unit::where('id', $prod_detail['purchase_unit_id'])->first();
+
+                    if ($request['statut'] == 'received') {
+
+                        if ($prod_detail['product_variant_id'] !== null) {
+                            $product_warehouse = product_warehouse::where('deleted_at', '=', null)
+                                ->where('warehouse_id', $request->warehouse_id)
+                                ->where('product_id', $prod_detail['product_id'])
+                                ->where('product_variant_id', $prod_detail['product_variant_id'])
+                                ->first();
+
+                            if (!$product_warehouse) {
+                                $product_warehouse = product_warehouse::firstOrCreate([
+                                    'warehouse_id' => $request->warehouse_id,
+                                    'product_id' => $prod_detail['product_id'],
+                                    'product_variant_id' => $prod_detail['product_variant_id'],
+                                ], [
+                                    'qte' => 0,
+                                ]);
+                            }
+
+                            if ($unit_prod && $product_warehouse) {
+                                if ($unit_prod->operator == '/') {
+                                    $product_warehouse->qte += $prod_detail['quantity'] / $unit_prod->operator_value;
+                                } else {
+                                    $product_warehouse->qte += $prod_detail['quantity'] * $unit_prod->operator_value;
+                                }
+
+                                $product_warehouse->save();
+                            }
+
+                        } else {
+                            $product_warehouse = product_warehouse::where('deleted_at', '=', null)
+                                ->where('warehouse_id', $request->warehouse_id)
+                                ->where('product_id', $prod_detail['product_id'])
+                                ->where('product_variant_id', null)
+                                ->first();
+
+                            if (!$product_warehouse) {
+                                $product_warehouse = product_warehouse::firstOrCreate([
+                                    'warehouse_id' => $request->warehouse_id,
+                                    'product_id' => $prod_detail['product_id'],
+                                    'product_variant_id' => null,
+                                ], [
+                                    'qte' => 0,
+                                ]);
+                            }
+
+                            if ($unit_prod && $product_warehouse) {
+                                if ($unit_prod->operator == '/') {
+                                    $product_warehouse->qte += $prod_detail['quantity'] / $unit_prod->operator_value;
+                                } else {
+                                    $product_warehouse->qte += $prod_detail['quantity'] * $unit_prod->operator_value;
+                                }
+
+                                $product_warehouse->save();
+                            }
                         }
-                    }
-                    $persisted = PurchaseDetail::where('purchase_id', $id)
-                        ->orderBy('id', 'asc')
-                        ->get();
-                    // Match by (product_id, product_variant_id) preserving input order.
-                    $aligned = [];
-                    $persistedByKey = [];
-                    foreach ($persisted as $d) {
-                        $k = $d->product_id . '|' . ($d->product_variant_id ?? '');
-                        $persistedByKey[$k][] = $d;
-                    }
-                    foreach ($alignedInput as $row) {
-                        $k = ($row['product_id'] ?? '') . '|' . ($row['product_variant_id'] ?? '');
-                        $match = isset($persistedByKey[$k]) ? array_shift($persistedByKey[$k]) : null;
-                        $aligned[] = $match;
-                    }
-                    $batchService->applyForPurchase($current_Purchase, $alignedInput, $aligned);
-                }
 
-                // Serial tracking: re-apply serials
-                if ($serialService->isSupported()) {
-                    $alignedInput = [];
-                    foreach ($new_purchase_details as $row) {
-                        if (($row['no_unit'] ?? 1) !== 0) {
-                            $alignedInput[] = $row;
-                        }
                     }
-                    $persisted = PurchaseDetail::where('purchase_id', $id)
-                        ->orderBy('id', 'asc')
-                        ->get();
-                    $aligned = [];
-                    $persistedByKey = [];
-                    foreach ($persisted as $d) {
-                        $k = $d->product_id . '|' . ($d->product_variant_id ?? '');
-                        $persistedByKey[$k][] = $d;
+
+                    $imei = $prod_detail['imei_number'] ?? null;
+                    if (empty($imei) && !empty($prod_detail['serial_numbers']) && is_array($prod_detail['serial_numbers'])) {
+                        $imei = implode(', ', array_filter(array_map('trim', $prod_detail['serial_numbers'])));
                     }
-                    foreach ($alignedInput as $row) {
-                        $k = ($row['product_id'] ?? '') . '|' . ($row['product_variant_id'] ?? '');
-                        $match = isset($persistedByKey[$k]) ? array_shift($persistedByKey[$k]) : null;
-                        $aligned[] = $match;
+
+                    $orderDetails['purchase_id'] = $id;
+                    $orderDetails['cost'] = $prod_detail['Unit_cost'];
+                    $orderDetails['purchase_unit_id'] = $prod_detail['purchase_unit_id'];
+                    $orderDetails['TaxNet'] = $prod_detail['tax_percent'];
+                    $orderDetails['tax_method'] = $prod_detail['tax_method'];
+                    $orderDetails['discount'] = $prod_detail['discount'];
+                    $orderDetails['discount_method'] = $prod_detail['discount_Method'];
+                    $orderDetails['quantity'] = $prod_detail['quantity'];
+                    $orderDetails['product_id'] = $prod_detail['product_id'];
+                    $orderDetails['product_variant_id'] = $prod_detail['product_variant_id'];
+                    $orderDetails['total'] = $prod_detail['subtotal'];
+                    $orderDetails['imei_number'] = $imei;
+
+                    if (! in_array($prod_detail['id'], $old_products_id)) {
+                        PurchaseDetail::Create($orderDetails);
+                    } else {
+                        PurchaseDetail::where('id', $prod_detail['id'])->update($orderDetails);
                     }
-                    $serialService->applyForPurchase($current_Purchase, $alignedInput, $aligned);
                 }
+            }
+
+            $due = $request['GrandTotal'] - $current_Purchase->paid_amount;
+            if ($due === 0.0 || $due < 0.0) {
+                $payment_statut = 'paid';
+            } elseif ($due != $request['GrandTotal']) {
+                $payment_statut = 'partial';
+            } elseif ($due == $request['GrandTotal']) {
+                $payment_statut = 'unpaid';
+            }
+
+            $current_Purchase->update([
+                'date' => $request['date'],
+                'provider_id' => $request['supplier_id'],
+                'warehouse_id' => $request['warehouse_id'],
+                'notes' => $request['notes'],
+                'tax_rate' => $request['tax_rate'],
+                'TaxNet' => $request['TaxNet'],
+                'discount' => $request['discount'],
+                'shipping' => $request['shipping'],
+                'statut' => $request['statut'],
+                'GrandTotal' => $request['GrandTotal'],
+                'payment_statut' => $payment_statut,
+            ]);
+
+            // Pharmacy: re-apply batches to the now-persisted PurchaseDetail rows.
+            if ($batchService->isSupported() && $current_Purchase->statut == 'received') {
+                // Build aligned arrays: skip rows the controller skipped (no_unit === 0).
+                $alignedInput = [];
+                foreach ($new_purchase_details as $row) {
+                    if (($row['no_unit'] ?? 1) !== 0) {
+                        $alignedInput[] = $row;
+                    }
+                }
+                $persisted = PurchaseDetail::where('purchase_id', $id)
+                    ->orderBy('id', 'asc')
+                    ->get();
+                // Match by (product_id, product_variant_id) preserving input order.
+                $aligned = [];
+                $persistedByKey = [];
+                foreach ($persisted as $d) {
+                    $k = $d->product_id . '|' . ($d->product_variant_id ?? '');
+                    $persistedByKey[$k][] = $d;
+                }
+                foreach ($alignedInput as $row) {
+                    $k = ($row['product_id'] ?? '') . '|' . ($row['product_variant_id'] ?? '');
+                    $match = isset($persistedByKey[$k]) ? array_shift($persistedByKey[$k]) : null;
+                    $aligned[] = $match;
+                }
+                $batchService->applyForPurchase($current_Purchase, $alignedInput, $aligned);
+            }
+
+            // Serial tracking: re-apply serials
+            if ($serialService->isSupported()) {
+                $alignedInput = [];
+                foreach ($new_purchase_details as $row) {
+                    if (($row['no_unit'] ?? 1) !== 0) {
+                        $alignedInput[] = $row;
+                    }
+                }
+                $persisted = PurchaseDetail::where('purchase_id', $id)
+                    ->orderBy('id', 'asc')
+                    ->get();
+                $aligned = [];
+                $persistedByKey = [];
+                foreach ($persisted as $d) {
+                    $k = $d->product_id . '|' . ($d->product_variant_id ?? '');
+                    $persistedByKey[$k][] = $d;
+                }
+                foreach ($alignedInput as $row) {
+                    $k = ($row['product_id'] ?? '') . '|' . ($row['product_variant_id'] ?? '');
+                    $match = isset($persistedByKey[$k]) ? array_shift($persistedByKey[$k]) : null;
+                    $aligned[] = $match;
+                }
+                $serialService->applyForPurchase($current_Purchase, $alignedInput, $aligned);
             }
 
         }, 10);
@@ -1351,18 +1435,14 @@ class PurchasesController extends BaseController
 
     public function edit(Request $request, $id)
     {
-        if (PurchaseReturn::where('purchase_id', $id)->where('deleted_at', '=', null)->exists()) {
-            return response()->json(['success' => false, 'Return exist for the Transaction' => false], 403);
-        } else {
-
-            $this->authorizeForUser($request->user('api'), 'update', Purchase::class);
-            $user = Auth::user();
-            // New way: Check user's record_view field (user-level boolean)
-            // Backward compatibility: If record_view is null, fall back to role permission check
-            $view_records = $user->hasRecordView();
-            $Purchase_data = Purchase::with('details.product.unitPurchase')
-                ->where('deleted_at', '=', null)
-                ->findOrFail($id);
+        $this->authorizeForUser($request->user('api'), 'update', Purchase::class);
+        $user = Auth::user();
+        // New way: Check user's record_view field (user-level boolean)
+        // Backward compatibility: If record_view is null, fall back to role permission check
+        $view_records = $user->hasRecordView();
+        $Purchase_data = Purchase::with('details.product.unitPurchase')
+            ->where('deleted_at', '=', null)
+            ->findOrFail($id);
 
             /**
              * Warehouses restriction
@@ -1523,9 +1603,15 @@ class PurchasesController extends BaseController
 
                 // Serial tracking
                 $data['enable_serial_tracking'] = (bool) ($detail['product']['enable_serial_tracking'] ?? false);
-                $data['serial_numbers'] = \App\Models\ProductSerialNumber::where('purchase_line_id', $detail->id)
+                $serials = \App\Models\ProductSerialNumber::where('purchase_line_id', $detail->id)
                     ->pluck('serial_no')
                     ->toArray();
+
+                if (empty($serials) && !empty($detail->imei_number)) {
+                    $serialService = app(\App\Services\SerialTrackingService::class);
+                    $serials = $serialService->parseSerials($detail->imei_number);
+                }
+                $data['serial_numbers'] = $serials;
 
                 $details[] = $data;
             }
@@ -1547,7 +1633,6 @@ class PurchasesController extends BaseController
                 'suppliers' => $suppliers,
                 'warehouses' => $warehouses,
             ]);
-        }
     }
 
     // ------------------- get_Products_by_purchase -----------------\\

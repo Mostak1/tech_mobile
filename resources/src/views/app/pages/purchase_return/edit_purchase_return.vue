@@ -86,67 +86,130 @@
                         <tr v-if="details.length <=0">
                           <td colspan="9">{{$t('NodataAvailable')}}</td>
                         </tr>
-                        <tr
-                          v-for="detail in details"
-                          :class="{'row_deleted': detail.del === 1 || detail.no_unit === 0}"
-                          :key="detail.detail_id"
-                        >
-                          <td>{{detail.detail_id}}</td>
-                          <td>
-                            <span>{{detail.code}}</span>
-                            <br>
-                            <span class="badge badge-success">{{detail.name}}</span>
-                            <div v-if="detail.is_batch_tracked" class="mt-1">
-                              <span
-                                class="badge"
-                                style="background:#eef2ff; color:#4f46e5; font-weight:600; letter-spacing:0.3px;"
-                                :title="$t('Auto_FEFO_Hint') || 'Oldest-expiring batches will be auto-allocated (FEFO) when this return is completed.'"
-                              >
-                                <lucide-icon name="package" style="margin-right:3px;" />{{ $t('Batches') || 'Batches' }} · FEFO
-                              </span>
-                            </div>
-                          </td>
-                          <td>{{currentUser.currency}} {{formatNumber(detail.Net_cost, 3)}}</td>
-                          <td>
-                            <span
-                              class="badge badge-outline-warning"
-                            >{{detail.purchase_quantity}} {{detail.unitPurchase}}</span>
-                          </td>
-                          <td>
-                            <span
-                              class="badge badge-outline-warning"
-                            >{{detail.stock}} {{detail.unitPurchase}}</span>
-                          </td>
-                          <td>
-                            <div class="quantity">
-                              <b-input-group>
-                                <b-input-group-prepend>
-                                  <span v-show="detail.no_unit !== 0"
-                                    class="btn btn-primary btn-sm"
-                                    @click="decrement(detail ,detail.detail_id)"
-                                  >-</span>
-                                </b-input-group-prepend>
-                                <input
-                                  class="form-control"
-                                  @keyup="Verified_Qty(detail,detail.detail_id)"
-                                  :min="0.00"
-                                  v-model.number="detail.quantity"
-                                  :disabled="detail.del === 1 || detail.no_unit === 0"
+                        <template v-for="detail in details">
+                          <tr
+                            :class="{'row_deleted': detail.del === 1 || detail.no_unit === 0}"
+                            :key="'row-'+detail.detail_id"
+                          >
+                            <td>{{detail.detail_id}}</td>
+                            <td>
+                              <span>{{detail.code}}</span>
+                              <br>
+                              <span class="badge badge-success">{{detail.name}}</span>
+                              <div v-if="detail.is_batch_tracked" class="mt-1">
+                                <span
+                                  class="badge"
+                                  style="background:#eef2ff; color:#4f46e5; font-weight:600; letter-spacing:0.3px;"
+                                  :title="$t('Auto_FEFO_Hint') || 'Oldest-expiring batches will be auto-allocated (FEFO) when this return is completed.'"
                                 >
-                                <b-input-group-append>
-                                  <span v-show="detail.no_unit !== 0"
-                                    class="btn btn-primary btn-sm"
-                                    @click="increment(detail ,detail.detail_id)"
-                                  >+</span>
-                                </b-input-group-append>
-                              </b-input-group>
-                            </div>
-                          </td>
-                          <td>{{currentUser.currency}} {{formatNumber(detail.DiscountNet * detail.quantity, 2)}}</td>
-                          <td>{{currentUser.currency}} {{formatNumber(detail.taxe * detail.quantity , 2)}}</td>
-                          <td>{{currentUser.currency}} {{detail.subtotal.toFixed(2)}}</td>
-                         
-                        </tr>
+                                  <lucide-icon name="package" style="margin-right:3px;" />{{ $t('Batches') || 'Batches' }} · FEFO
+                                </span>
+                              </div>
+                            </td>
+                            <td>{{currentUser.currency}} {{formatNumber(detail.Net_cost, 3)}}</td>
+                            <td>
+                              <span
+                                class="badge badge-outline-warning"
+                              >{{detail.purchase_quantity}} {{detail.unitPurchase}}</span>
+                            </td>
+                            <td>
+                              <span
+                                class="badge badge-outline-warning"
+                              >{{detail.stock}} {{detail.unitPurchase}}</span>
+                            </td>
+                            <td>
+                              <div class="quantity">
+                                <b-input-group>
+                                  <b-input-group-prepend>
+                                    <span v-show="detail.no_unit !== 0"
+                                      class="btn btn-primary btn-sm"
+                                      @click="decrement(detail ,detail.detail_id)"
+                                    >-</span>
+                                  </b-input-group-prepend>
+                                  <input
+                                    class="form-control"
+                                    @keyup="Verified_Qty(detail,detail.detail_id)"
+                                    :min="0.00"
+                                    v-model.number="detail.quantity"
+                                    :disabled="detail.del === 1 || detail.no_unit === 0"
+                                  >
+                                  <b-input-group-append>
+                                    <span v-show="detail.no_unit !== 0"
+                                      class="btn btn-primary btn-sm"
+                                      @click="increment(detail ,detail.detail_id)"
+                                    >+</span>
+                                  </b-input-group-append>
+                                </b-input-group>
+                              </div>
+                            </td>
+                            <td>{{currentUser.currency}} {{formatNumber(detail.DiscountNet * detail.quantity, 2)}}</td>
+                            <td>{{currentUser.currency}} {{formatNumber(detail.taxe * detail.quantity , 2)}}</td>
+                            <td>{{currentUser.currency}} {{detail.subtotal.toFixed(2)}}</td>
+                           
+                          </tr>
+
+                          <!-- Serial numbers row for serial-tracked products -->
+                          <tr v-if="detail.enable_serial_tracking" :key="'serials-'+detail.detail_id" style="background: transparent;">
+                            <td colspan="9" style="padding: 0; border-top: 0;">
+                              <div style="margin: 6px 8px 14px 8px; border: 1px solid #d1fae5; border-radius: 10px; overflow: hidden; background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%);">
+                                <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #fff; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px;">
+                                  <div style="display: flex; align-items: center; gap: 8px;">
+                                    <lucide-icon name="list" />
+                                    <span>{{ $t('Serial_IMEI_Numbers') || 'Serial/IMEI Numbers' }}</span>
+                                    <span style="background: rgba(255,255,255,0.22); padding: 1px 8px; border-radius: 10px; font-size: 10px; font-weight: 600;">
+                                      {{ (detail.serial_numbers || []).length }} / {{ Math.floor(detail.quantity) }}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div style="padding: 12px 16px;">
+                                  <div v-if="detail.available_serials && detail.available_serials.length">
+                                    <div style="font-size: 11px; font-weight: bold; color: #4b5563; margin-bottom: 6px;">
+                                      {{ $t('Available_Serials_Hint') || 'Available Serials (Click to select/unselect):' }}
+                                    </div>
+                                    <div class="d-flex flex-wrap gap-1" style="max-height: 100px; overflow-y: auto; padding: 6px; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px;">
+                                      <span
+                                        v-for="sn in detail.available_serials"
+                                        :key="sn"
+                                        @click="toggle_serial_number(detail, sn)"
+                                        :style="{
+                                          cursor: 'pointer',
+                                          fontSize: '11px',
+                                          padding: '3px 8px',
+                                          borderRadius: '4px',
+                                          border: '1px solid',
+                                          backgroundColor: (detail.serial_numbers || []).includes(sn) ? '#ecfdf5' : '#f3f4f6',
+                                          borderColor: (detail.serial_numbers || []).includes(sn) ? '#10b981' : '#e5e7eb',
+                                          color: (detail.serial_numbers || []).includes(sn) ? '#065f46' : '#374151',
+                                          marginRight: '6px',
+                                          marginBottom: '6px',
+                                          display: 'inline-block',
+                                          fontWeight: (detail.serial_numbers || []).includes(sn) ? '600' : 'normal'
+                                        }"
+                                      >
+                                        {{ sn }}
+                                        <lucide-icon v-if="(detail.serial_numbers || []).includes(sn)" name="check" style="width: 12px; height: 12px; margin-left: 2px;" />
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div v-else class="text-warning" style="font-size: 11px;">
+                                    <lucide-icon name="alert-triangle" style="font-size: 13px; margin-right: 4px;" />
+                                    {{ $t('No_Available_Serials') || 'No unsold serial numbers available for this product in this purchase.' }}
+                                  </div>
+
+                                  <div
+                                    v-if="detail.quantity > 0 && (detail.serial_numbers || []).length !== Math.floor(detail.quantity)"
+                                    class="text-danger mt-2"
+                                    style="font-size: 12px; display: flex; align-items: center; gap: 6px;"
+                                  >
+                                    <lucide-icon name="alert-circle" />
+                                    <span>Please select exactly {{ Math.floor(detail.quantity) }} serial number(s) (Currently selected: {{ (detail.serial_numbers || []).length }})</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        </template>
                       </tbody>
                     </table>
                   </div>
@@ -356,8 +419,8 @@ export default {
     Verified_Qty(detail, id) {
       for (var i = 0; i < this.details.length; i++) {
         if (this.details[i].detail_id == id) {
-          if (isNaN(detail.quantity)) {
-            this.details[i].quantity = 1;
+          if (isNaN(detail.quantity) || detail.quantity < 0) {
+            this.details[i].quantity = 0;
           }
 
           if (detail.quantity > detail.purchase_quantity) {
@@ -369,6 +432,7 @@ export default {
           } else {
             this.details[i].quantity = detail.quantity;
           }
+          this.syncSerialsWithQty(this.details[i]);
           this.Calcul_Total();
           this.$forceUpdate();
         }
@@ -386,6 +450,7 @@ export default {
             this.makeToast("warning", this.$t("qty_return_is_greater_than_Quantity_Remaining"), this.$t("Warning"));
           } else {
             this.formatNumber(this.details[i].quantity++, 2);
+            this.syncSerialsWithQty(this.details[i]);
           }
         }
       }
@@ -398,21 +463,49 @@ export default {
     decrement(detail, id) {
       for (var i = 0; i < this.details.length; i++) {
         if (this.details[i].detail_id == id) {
-          if (detail.quantity - 1 > 0) {
-             if (detail.quantity - 1 > 0) {
-            if (detail.quantity - 1 > detail.purchase_quantity) {
-            this.makeToast("warning", this.$t("qty_return_is_greater_than_qty_purchased"), this.$t("Warning"));
-          }else if(detail.quantity - 1 > detail.stock){
-            this.makeToast("warning", this.$t("qty_return_is_greater_than_Quantity_Remaining"), this.$t("Warning"));
-          } else {
-              this.formatNumber(this.details[i].quantity--, 2);
-            }
-          }
+          if (detail.quantity - 1 >= 0) {
+            this.formatNumber(this.details[i].quantity--, 2);
+            this.syncSerialsWithQty(this.details[i]);
           }
         }
       }
       this.$forceUpdate();
       this.Calcul_Total();
+    },
+
+    toggle_serial_number(detail, sn) {
+      if (!Array.isArray(detail.serial_numbers)) {
+        this.$set(detail, 'serial_numbers', []);
+      }
+      const idx = detail.serial_numbers.indexOf(sn);
+      if (idx > -1) {
+        detail.serial_numbers.splice(idx, 1);
+      } else {
+        if (detail.serial_numbers.length < Math.floor(detail.quantity)) {
+          detail.serial_numbers.push(sn);
+        } else {
+          this.makeToast("warning", "Cannot select more serial numbers than product quantity", "Warning");
+        }
+      }
+      detail.imei_number = detail.serial_numbers.join(', ');
+      this.$forceUpdate();
+    },
+
+    syncSerialsWithQty(detail) {
+      if (!detail.enable_serial_tracking) return;
+      if (!Array.isArray(detail.serial_numbers)) {
+        this.$set(detail, 'serial_numbers', []);
+      }
+      const targetQty = Math.floor(detail.quantity || 0);
+      const available = Array.isArray(detail.available_serials) ? detail.available_serials : [];
+      if (detail.serial_numbers.length < targetQty) {
+        const needed = targetQty - detail.serial_numbers.length;
+        const candidates = available.filter(sn => !detail.serial_numbers.includes(sn));
+        detail.serial_numbers.push(...candidates.slice(0, needed));
+      } else if (detail.serial_numbers.length > targetQty) {
+        detail.serial_numbers.splice(targetQty);
+      }
+      detail.imei_number = detail.serial_numbers.join(', ');
     },
 
     //------------------------------Formetted Numbers -------------------------\\
@@ -510,18 +603,25 @@ export default {
       } else {
         var count = 0;
         for (var i = 0; i < this.details.length; i++) {
-          if (
-            this.details[i].quantity != "" ||
-            this.details[i].quantity !== 0
-          ) {
+          const qty = Number(this.details[i].quantity);
+          if (qty > 0) {
             count += 1;
+            if (this.details[i].enable_serial_tracking) {
+              const snCount = (this.details[i].serial_numbers || []).length;
+              if (snCount !== Math.floor(qty)) {
+                this.makeToast(
+                  "warning",
+                  (this.details[i].name || "Product") + ": please select " + Math.floor(qty) + " serial number(s).",
+                  this.$t("Warning")
+                );
+                return false;
+              }
+            }
           }
-         
         }
 
         if (count === 0) {
           this.makeToast("warning", this.$t("Please_add_return_quantity"), this.$t("Warning"));
-
           return false;
         } else {
           return true;
@@ -565,8 +665,14 @@ export default {
           })
           .catch(error => {
             NProgress.done();
-            this.makeToast("danger", this.$t("InvalidData"), this.$t("Failed"));
             this.SubmitProcessing = false;
+            if (this.$showApiError) {
+              this.$showApiError(error);
+            } else if (error.response && error.response.data && error.response.data.message) {
+              this.makeToast("danger", error.response.data.message, this.$t("Failed"));
+            } else {
+              this.makeToast("danger", (error && error.message) || this.$t("InvalidData"), this.$t("Failed"));
+            }
           });
       }
     },
@@ -580,6 +686,11 @@ export default {
         .then(response => {
           this.purchase_return = response.data.purchase_return;
           this.details = response.data.details;
+          this.details.forEach(d => {
+            if (!Array.isArray(d.serial_numbers)) {
+              this.$set(d, 'serial_numbers', []);
+            }
+          });
           this.Calcul_Total();
           this.isLoading = false;
         })

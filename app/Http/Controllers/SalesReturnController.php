@@ -188,13 +188,26 @@ class SalesReturnController extends BaseController
             'statut' => 'required',
         ]);
 
+        $validationService = app(\App\Services\TransactionValidationService::class);
+        $returnErrors = $validationService->validateSaleReturn($request['details'], (int) $request->warehouse_id, $request->sale_id ? (int) $request->sale_id : null);
+        if (!empty($returnErrors)) {
+            return response()->json([
+                'success' => false,
+                'title' => 'Return Validation Failed',
+                'message' => implode("\n", $returnErrors),
+                'errors' => $returnErrors,
+            ], 422);
+        }
+
         $serialService = app(\App\Services\SerialTrackingService::class);
         if ($serialService->isSupported()) {
             $serialErrors = $serialService->validateSaleReturn($request['details'], (int) $request->warehouse_id);
             if (!empty($serialErrors)) {
                 return response()->json([
                     'success' => false,
-                    'message' => implode(' ', $serialErrors),
+                    'title' => 'Serial Validation Failed',
+                    'message' => implode("\n", $serialErrors),
+                    'errors' => $serialErrors,
                 ], 422);
             }
         }
@@ -309,13 +322,26 @@ class SalesReturnController extends BaseController
     {
         $this->authorizeForUser($request->user('api'), 'update', SaleReturn::class);
 
+        $validationService = app(\App\Services\TransactionValidationService::class);
+        $returnErrors = $validationService->validateSaleReturn($request['details'], (int) $request->warehouse_id, $request->sale_id ? (int) $request->sale_id : null);
+        if (!empty($returnErrors)) {
+            return response()->json([
+                'success' => false,
+                'title' => 'Return Validation Failed',
+                'message' => implode("\n", $returnErrors),
+                'errors' => $returnErrors,
+            ], 422);
+        }
+
         $serialService = app(\App\Services\SerialTrackingService::class);
         if ($serialService->isSupported()) {
             $serialErrors = $serialService->validateSaleReturn($request['details'], (int) $request->warehouse_id);
             if (!empty($serialErrors)) {
                 return response()->json([
                     'success' => false,
-                    'message' => implode(' ', $serialErrors),
+                    'title' => 'Serial Validation Failed',
+                    'message' => implode("\n", $serialErrors),
+                    'errors' => $serialErrors,
                 ], 422);
             }
         }

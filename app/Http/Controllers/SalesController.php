@@ -228,13 +228,26 @@ class SalesController extends BaseController
             'warehouse_id' => 'required',
         ]);
 
+        $validationService = app(\App\Services\TransactionValidationService::class);
+        $stockErrors = $validationService->validateSaleStock($request['details'], (int) $request->warehouse_id);
+        if (!empty($stockErrors)) {
+            return response()->json([
+                'success' => false,
+                'title' => 'Insufficient Stock',
+                'message' => implode("\n", $stockErrors),
+                'errors' => $stockErrors,
+            ], 422);
+        }
+
         $serialService = app(\App\Services\SerialTrackingService::class);
         if ($serialService->isSupported()) {
             $serialErrors = $serialService->validateSale($request['details'], $request->warehouse_id);
             if (!empty($serialErrors)) {
                 return response()->json([
                     'success' => false,
-                    'message' => implode(' ', $serialErrors),
+                    'title' => 'Serial Validation Failed',
+                    'message' => implode("\n", $serialErrors),
+                    'errors' => $serialErrors,
                 ], 422);
             }
         }
@@ -534,13 +547,26 @@ class SalesController extends BaseController
             'client_id' => 'required',
         ]);
 
+        $validationService = app(\App\Services\TransactionValidationService::class);
+        $stockErrors = $validationService->validateSaleStock($request['details'], (int) $request->warehouse_id, (int) $id);
+        if (!empty($stockErrors)) {
+            return response()->json([
+                'success' => false,
+                'title' => 'Insufficient Stock',
+                'message' => implode("\n", $stockErrors),
+                'errors' => $stockErrors,
+            ], 422);
+        }
+
         $serialService = app(\App\Services\SerialTrackingService::class);
         if ($serialService->isSupported()) {
             $serialErrors = $serialService->validateSale($request['details'], $request->warehouse_id, $id);
             if (!empty($serialErrors)) {
                 return response()->json([
                     'success' => false,
-                    'message' => implode(' ', $serialErrors),
+                    'title' => 'Serial Validation Failed',
+                    'message' => implode("\n", $serialErrors),
+                    'errors' => $serialErrors,
                 ], 422);
             }
         }
@@ -1839,7 +1865,7 @@ class SalesController extends BaseController
             $warehouses = Warehouse::whereNull('deleted_at')->whereIn('id', $warehouses_id)->get(['id', 'name']);
         }
 
-        $clients = Client::whereNull('deleted_at')->get(['id', 'name']);
+        $clients = Client::whereNull('deleted_at')->limit(10)->get(['id', 'name', 'phone']);
         $sales_agents = SalesAgent::where('deleted_at', '=', null)->get(['id', 'name']);
 
         return response()->json([
@@ -2846,7 +2872,10 @@ class SalesController extends BaseController
                 $warehouses = Warehouse::where('deleted_at', '=', null)->whereIn('id', $warehouses_id)->get(['id', 'name']);
             }
 
-            $clients = Client::where('deleted_at', '=', null)->get(['id', 'name']);
+            $clients = Client::where('deleted_at', '=', null)->where('id', $Sale_data->client_id)->get(['id', 'name', 'phone']);
+            if ($clients->isEmpty()) {
+                $clients = Client::where('deleted_at', '=', null)->limit(5)->get(['id', 'name', 'phone']);
+            }
             $sales_agents = SalesAgent::where('deleted_at', '=', null)->get(['id', 'name']);
             $settings = Setting::where('deleted_at', '=', null)->first();
 

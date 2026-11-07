@@ -600,11 +600,10 @@
           <!-- Client  -->
           <b-col md="12">
             <b-form-group :label="$t('Customer')" class="modern-form-group">
-              <v-select
-                :reduce="label => label.value"
-                :placeholder="$t('Choose_Customer')"
+              <customer-select
                 v-model="Filter_Client"
-                :options="clients.map(clients => ({label: clients.name, value: clients.id}))"
+                :placeholder="$t('Choose_Customer')"
+                :clearable="true"
                 class="modern-select"
               />
             </b-form-group>

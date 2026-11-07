@@ -3086,6 +3086,8 @@ export default {
       whDrawerSearch: "",
       custDrawerOpen: false,
       custDrawerSearch: "",
+      custDrawerResults: [],
+      custDrawerTimer: null,
       product_currentPage: 1,
       paginated_Products: [],
       product_perPage: 10,
@@ -3420,12 +3422,18 @@ export default {
     selectedCustomerLabel() {
       if (!this.selectedClientId) return this.$t('Select_Customer') || 'Select customer';
       const c = (this.clients || []).find(x => x.id === this.selectedClientId);
-      return c ? c.name : (this.$t('Select_Customer') || 'Select customer');
+      if (c) {
+        return c.phone ? `${c.name} (${c.phone})` : c.name;
+      }
+      return this.$t('Select_Customer') || 'Select customer';
     },
 
     // Customers filtered by the drawer's search box (matches name OR phone)
     filteredCustomers() {
       const q = (this.custDrawerSearch || '').trim().toLowerCase();
+      if (q.length >= 2 && this.custDrawerResults && this.custDrawerResults.length) {
+        return this.custDrawerResults;
+      }
       const list = this.customerOptions || [];
       if (!q) return list;
       return list.filter(c => {
@@ -3659,6 +3667,37 @@ export default {
   },
 
   watch: {
+    custDrawerSearch(val) {
+      const q = (val || '').trim();
+      if (q.length < 2) {
+        this.custDrawerResults = [];
+        return;
+      }
+      if (this.custDrawerTimer) clearTimeout(this.custDrawerTimer);
+      this.custDrawerTimer = setTimeout(() => {
+        axios
+          .get("search_clients", { params: { search: q, limit: 30 } })
+          .then(res => {
+            const results = (res.data || []).map(client => ({
+              label: client.phone ? `${client.name} (${client.phone})` : client.name,
+              value: client.id,
+              phone: client.phone || '',
+              name: client.name || '',
+              ...client
+            }));
+            this.custDrawerResults = results;
+            results.forEach(r => {
+              if (this.clients && !this.clients.some(c => c.id === r.id)) {
+                this.clients.push(r);
+              }
+            });
+          })
+          .catch(e => {
+            console.error(e);
+          });
+      }, 300);
+    },
+
     // When the warehouse changes (including being cleared), clear the current
     // checkout so we never mix products/stock from different warehouses.
     'sale.warehouse_id'(newVal, oldVal) {
@@ -4331,10 +4370,12 @@ export default {
           .catch(error => {
             NProgress.done();
             this.paymentProcessing = false;
-            if (error.response && error.response.data && error.response.data.message) {
+            if (this.$showApiError) {
+              this.$showApiError(error);
+            } else if (error.response && error.response.data && error.response.data.message) {
               this.makeToast("danger", error.response.data.message, this.$t("Failed"));
             } else {
-              this.makeToast("danger", this.$t("InvalidData"), this.$t("Failed"));
+              this.makeToast("danger", (error && error.message) || this.$t("InvalidData"), this.$t("Failed"));
             }
           });
       }
@@ -7289,6 +7330,7 @@ export default {
       this.selectedClientId = (id != null) ? id : '';
       this.custDrawerOpen = false;
       this.custDrawerSearch = '';
+      this.custDrawerResults = [];
       this.onClientSelected(this.selectedClientId);
     },
     catInitial(name) {
