@@ -1014,8 +1014,14 @@ export default {
           .catch(error => {
             // Complete the animation of theprogress bar.
             NProgress.done();
-            this.makeToast("danger", this.$t("InvalidData"), this.$t("Failed"));
             this.SubmitProcessing = false;
+            if (this.$showApiError) {
+              this.$showApiError(error);
+            } else if (error.response && error.response.data && error.response.data.message) {
+              this.makeToast("danger", error.response.data.message, this.$t("Failed"));
+            } else {
+              this.makeToast("danger", (error && error.message) || this.$t("InvalidData"), this.$t("Failed"));
+            }
           });
       }
     },

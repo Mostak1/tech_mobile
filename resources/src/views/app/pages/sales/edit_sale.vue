@@ -43,14 +43,13 @@
                 <b-col lg="4" md="4" sm="12" class="mb-3">
                   <validation-provider name="Customer" :rules="{ required: true}">
                     <b-form-group slot-scope="{ valid, errors }" :label="$t('Customer') + ' ' + '*'">
-                      <v-select
+                      <customer-select
                         :class="{'is-invalid': !!errors.length}"
                         :state="errors[0] ? false : (valid ? true : null)"
                         v-model="sale.client_id"
                         disabled
-                        :reduce="label => label.value"
+                        :initial-options="clients"
                         :placeholder="$t('Choose_Customer')"
-                        :options="clients.map(c => ({label: c.phone ? c.name + ' (' + c.phone + ')' : c.name, value: c.id}))"
                       />
                       <b-form-invalid-feedback>{{ errors[0] }}</b-form-invalid-feedback>
                     </b-form-group>
@@ -2044,12 +2043,14 @@ export default {
           })
           .catch(error => {
             NProgress.done();
-            if (error.response && error.response.data && error.response.data.message) {
+            this.SubmitProcessing = false;
+            if (this.$showApiError) {
+              this.$showApiError(error);
+            } else if (error.response && error.response.data && error.response.data.message) {
               this.makeToast("danger", error.response.data.message, this.$t("Failed"));
             } else {
-              this.makeToast("danger", this.$t("InvalidData"), this.$t("Failed"));
+              this.makeToast("danger", (error && error.message) || this.$t("InvalidData"), this.$t("Failed"));
             }
-            this.SubmitProcessing = false;
           });
       }
     },

@@ -23,10 +23,9 @@
                 <b-col lg="4" md="6" sm="12" v-if="contract.party_type === 'customer'">
                   <validation-provider name="Customer" rules="required" v-slot="{ errors }">
                     <b-form-group :label="$t('Customer') + ' *'">
-                      <v-select
+                      <customer-select
                         v-model="contract.client_id"
-                        :reduce="label => label.value"
-                        :options="clients.map(c => ({ label: c.name, value: c.id }))"
+                        :initial-options="clients"
                         :placeholder="$t('Choose_Customer')"
                         :class="{ 'is-invalid': errors[0] }"
                       />

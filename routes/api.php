@@ -410,6 +410,7 @@ Route::middleware(['auth:api', 'Is_Active', 'request.safety', 'token.timeout'])-
     // ------------------------------------------------------------------\\
 
     Route::resource('clients', 'ClientController');
+    Route::get('search_clients', 'ClientController@search_clients');
     Route::post('customers/import', 'ClientController@import');
     Route::get('get_clients_without_paginate', 'ClientController@Get_Clients_Without_Paginate');
     Route::post('clients/delete/by_selection', 'ClientController@delete_by_selection');

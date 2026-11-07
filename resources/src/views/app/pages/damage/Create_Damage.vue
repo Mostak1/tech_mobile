@@ -759,7 +759,17 @@ export default {
         this.SubmitProcessing = true; NProgress.start(); NProgress.set(0.1);
         axios.post("damages", { warehouse_id: this.damage.warehouse_id, date: this.damage.date, notes: this.damage.notes, details: this.buildSubmitDetails() })
           .then(() => { NProgress.done(); this.SubmitProcessing = false; this.$router.push({ name: "index_damage" }); this.makeToast("success", this.$t("Successfully_Created"), this.$t("Success")); })
-          .catch(error => { NProgress.done(); if(error.errors && error.errors.details && error.errors.details.length){ this.makeToast("danger", error.errors.details[0], this.$t("Failed")); } else { this.makeToast("danger", this.$t("InvalidData"), this.$t("Failed")); } this.SubmitProcessing = false; });
+          .catch(error => {
+            NProgress.done();
+            this.SubmitProcessing = false;
+            if (this.$showApiError) {
+              this.$showApiError(error);
+            } else if (error.errors && error.errors.details && error.errors.details.length) {
+              this.makeToast("danger", error.errors.details[0], this.$t("Failed"));
+            } else {
+              this.makeToast("danger", (error && error.message) || this.$t("InvalidData"), this.$t("Failed"));
+            }
+          });
       }
     },
     detail_order_id() { this.product.detail_id = 0; var len = this.details.length; this.product.detail_id = this.details[len - 1].detail_id + 1; },

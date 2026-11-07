@@ -91,13 +91,26 @@ class PosController extends BaseController
             }
         }
 
+        $validationService = app(\App\Services\TransactionValidationService::class);
+        $stockErrors = $validationService->validateSaleStock($request['details'], (int) $request->warehouse_id);
+        if (!empty($stockErrors)) {
+            return response()->json([
+                'success' => false,
+                'title' => 'Insufficient Stock',
+                'message' => implode("\n", $stockErrors),
+                'errors' => $stockErrors,
+            ], 422);
+        }
+
         $serialService = app(\App\Services\SerialTrackingService::class);
         if ($serialService->isSupported()) {
             $serialErrors = $serialService->validateSale($request['details'], $request->warehouse_id);
             if (!empty($serialErrors)) {
                 return response()->json([
                     'success' => false,
-                    'message' => implode(' ', $serialErrors),
+                    'title' => 'Serial Validation Failed',
+                    'message' => implode("\n", $serialErrors),
+                    'errors' => $serialErrors,
                 ], 422);
             }
         }
@@ -1358,11 +1371,13 @@ class PosController extends BaseController
     public function data_draft_convert_sale(Request $request, $id)
     {
         $this->authorizeForUser($request->user('api'), 'Sales_pos', Sale::class);
-        $clients = Client::where('deleted_at', '=', null)->get(['id', 'name', 'phone']);
+        $draft_sale_data = DraftSale::with('details.product.unitSale')->where('deleted_at', '=', null)->findOrFail($id);
+        $clients = Client::where('deleted_at', '=', null)->where('id', $draft_sale_data->client_id)->get(['id', 'name', 'phone']);
+        if ($clients->isEmpty()) {
+            $clients = Client::where('deleted_at', '=', null)->limit(10)->get(['id', 'name', 'phone']);
+        }
         $settings = Setting::where('deleted_at', '=', null)->with('Client')->first();
         $accounts = Account::where('deleted_at', '=', null)->orderBy('id', 'desc')->get(['id', 'account_name']);
-
-        $draft_sale_data = DraftSale::with('details.product.unitSale')->where('deleted_at', '=', null)->findOrFail($id);
 
         // get warehouses assigned to user
         $user_auth = auth()->user();
@@ -1918,8 +1933,14 @@ class PosController extends BaseController
     public function GetELementPos(Request $request)
     {
         $this->authorizeForUser($request->user('api'), 'Sales_pos', Sale::class);
-        $clients = Client::where('deleted_at', '=', null)->get(['id', 'name', 'phone']);
         $settings = Setting::where('deleted_at', '=', null)->with('Client')->first();
+        $clients = Client::where('deleted_at', '=', null)->limit(15)->get(['id', 'name', 'phone']);
+        if ($settings && $settings->client_id && !$clients->contains('id', $settings->client_id)) {
+            $defaultClient = Client::where('deleted_at', '=', null)->where('id', $settings->client_id)->first(['id', 'name', 'phone']);
+            if ($defaultClient) {
+                $clients->prepend($defaultClient);
+            }
+        }
         $accounts = Account::where('deleted_at', '=', null)->orderBy('id', 'desc')->get(['id', 'account_name']);
 
         // get warehouses assigned to user

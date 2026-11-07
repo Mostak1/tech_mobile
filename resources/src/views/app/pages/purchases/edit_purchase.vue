@@ -994,6 +994,10 @@ export default {
           this.details[i].discount_Method = this.detail.discount_Method;
           this.details[i].discount = this.detail.discount;
           this.details[i].imei_number = this.detail.imei_number;
+          if (this.details[i].enable_serial_tracking && this.detail.imei_number) {
+            const parsed = this.detail.imei_number.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+            this.$set(this.details[i], 'serial_numbers', parsed);
+          }
 
           if (this.details[i].discount_Method == "2") {
             //Fixed
@@ -1192,9 +1196,11 @@ export default {
     onSerialInput(detail, val) {
       if (!val) {
         this.$set(detail, 'serial_numbers', []);
+        detail.imei_number = '';
       } else {
         const serials = val.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
         this.$set(detail, 'serial_numbers', serials);
+        detail.imei_number = serials.join(', ');
       }
     },
 
@@ -1392,10 +1398,12 @@ export default {
             // Complete the animation of theprogress bar.
             NProgress.done();
             this.SubmitProcessing = false;
-            if (error.response && error.response.data && error.response.data.message) {
+            if (this.$showApiError) {
+              this.$showApiError(error);
+            } else if (error.response && error.response.data && error.response.data.message) {
               this.makeToast("danger", error.response.data.message, this.$t("Failed"));
             } else {
-              this.makeToast("danger", this.$t("InvalidData"), this.$t("Failed"));
+              this.makeToast("danger", (error && error.message) || this.$t("InvalidData"), this.$t("Failed"));
             }
           });
       }

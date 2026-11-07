@@ -138,11 +138,9 @@
           <!-- Customers  -->
           <b-col md="12">
             <b-form-group :label="$t('Customer')">
-              <v-select
-                :reduce="o => o.value"
-                :placeholder="$t('Choose_Customer')"
+              <customer-select
                 v-model="Filter_client"
-                :options="clients.map(c => ({label: c.name, value: c.id}))"
+                :placeholder="$t('Choose_Customer')"
                 :clearable="true"
               />
             </b-form-group>

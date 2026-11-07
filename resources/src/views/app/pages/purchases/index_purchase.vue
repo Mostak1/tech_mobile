@@ -85,7 +85,7 @@
 
                 <b-dropdown-item
                   title="Edit"
-                  v-if="currentUserPermissions.includes('Purchases_edit') && props.row.purchase_has_return == 'no'"
+                  v-if="currentUserPermissions.includes('Purchases_edit')"
                   :to="'/app/purchases/edit/'+props.row.id"
                 >
                   <lucide-icon class="nav-icon font-weight-bold mr-2" name="pen" />

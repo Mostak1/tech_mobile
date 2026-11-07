@@ -8,12 +8,10 @@
       <b-row class="mb-3">
         <b-col md="4">
           <b-form-group :label="$t('Customer')">
-            <v-select
-              :reduce="c => c.id"
+            <customer-select
               v-model="filters.client_id"
-              :options="clients"
-              label="name"
               :placeholder="$t('Choose_Customer')"
+              :clearable="true"
               @input="fetchHistory"
             />
           </b-form-group>

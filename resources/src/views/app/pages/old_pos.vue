@@ -400,14 +400,11 @@
 
       <!-- Row 4: Customer (100%) -->
       <div class="mobile-row">
-        <v-select
+        <customer-select
           v-model="selectedClientId"
           :class="['customer-select-header', { 'has-selected-customer': selectedClientId }]"
-          :reduce="label => label.value"
           :placeholder="$t('Select_Customer')"
-          :options="customerOptions"
-          :filterable="true"
-          :filter-by="filterCustomerByPhone"
+          :initial-options="clients"
           :clearable="true"
           @input="onClientSelected(selectedClientId)"
         />

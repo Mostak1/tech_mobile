@@ -37,6 +37,29 @@ class SerialTrackingService
     }
 
     /**
+     * Resolve product name and SKU / code label for user-friendly errors
+     */
+    public function getProductLabel($productId, $item = []): array
+    {
+        $name = $item['name'] ?? null;
+        $code = $item['code'] ?? null;
+        if (!$name || !$code) {
+            $product = Product::find($productId);
+            if ($product) {
+                $name = $name ?: $product->name;
+                $code = $code ?: $product->code;
+            }
+        }
+        $name = $name ?: "Product #{$productId}";
+        $code = $code ?: "N/A";
+        return [
+            'name' => $name,
+            'code' => $code,
+            'label' => "Product Name: {$name}, SKU: {$code}",
+        ];
+    }
+
+    /**
      * Extract serial numbers from string (comma/newline/space separated)
      */
     public function parseSerials($input): array
@@ -70,18 +93,21 @@ class SerialTrackingService
                 continue;
             }
 
+            $pInfo = $this->getProductLabel($productId, $item);
+            $pLabel = $pInfo['label'];
+
             $qty = (float) ($item['quantity'] ?? 0);
             $requiredCount = (int) floor($qty);
             $serials = $this->parseSerials($item['serial_numbers'] ?? $item['imei_number'] ?? '');
 
             if (count($serials) !== $requiredCount) {
-                $errors[] = "Product " . ($item['name'] ?? "ID $productId") . " requires $requiredCount serial numbers, but " . count($serials) . " were provided.";
+                $errors[] = "Quantity Unavailable: Product requires $requiredCount serial numbers, but " . count($serials) . " were provided. {$pLabel}.";
                 continue;
             }
 
             // Check for duplicates in current input
             if (count(array_unique($serials)) !== count($serials)) {
-                $errors[] = "Product " . ($item['name'] ?? "ID $productId") . " contains duplicate serial numbers in the input.";
+                $errors[] = "Duplicate Submission: Duplicate serial numbers detected in input for {$pLabel}.";
                 continue;
             }
 
@@ -90,17 +116,29 @@ class SerialTrackingService
                 ->whereIn('status', ['available', 'in_service']);
             if ($purchaseId) {
                 // Ignore serials registered under current purchase
-                $query->where(function ($q) use ($purchaseId) {
-                    $q->whereNull('purchase_line_id')
-                      ->orWhereHas('purchaseLine', function ($qp) use ($purchaseId) {
-                          $qp->where('purchase_id', '!=', $purchaseId);
-                      });
+                $purchaseLines = PurchaseDetail::where('purchase_id', $purchaseId)->get();
+                $existingLineIds = $purchaseLines->pluck('id')->toArray();
+                $existingPurchaseSerials = [];
+                foreach ($purchaseLines as $pl) {
+                    foreach ($this->parseSerials($pl->imei_number) as $ps) {
+                        $existingPurchaseSerials[$ps] = true;
+                    }
+                }
+
+                $query->where(function ($q) use ($existingLineIds, $existingPurchaseSerials) {
+                    $q->where(function ($sub) use ($existingLineIds) {
+                        $sub->whereNull('purchase_line_id')
+                            ->orWhereNotIn('purchase_line_id', $existingLineIds);
+                    });
+                    if (!empty($existingPurchaseSerials)) {
+                        $q->whereNotIn('serial_no', array_keys($existingPurchaseSerials));
+                    }
                 });
             }
 
             $dbDuplicates = $query->pluck('serial_no')->toArray();
             if (!empty($dbDuplicates)) {
-                $errors[] = "The following serial numbers are already registered in the system: " . implode(', ', $dbDuplicates);
+                $errors[] = "Duplicate Submission: The serial numbers (" . implode(', ', $dbDuplicates) . ") are already registered in the system. {$pLabel}.";
             }
         }
 
@@ -137,10 +175,20 @@ class SerialTrackingService
             }
 
             // Reverse existing serial numbers for this purchase line (handles updates cleanly)
-            $this->reverseForPurchaseDetail($detail);
+            $this->reverseForPurchaseDetail($detail, $serials);
 
             if ($purchase->statut === 'received') {
                 foreach ($serials as $serialNo) {
+                    $existingSerial = ProductSerialNumber::where('serial_no', $serialNo)->first();
+                    if ($existingSerial && $existingSerial->status === 'sold') {
+                        $existingSerial->update([
+                            'product_id' => $productId,
+                            'variation_id' => $detail->product_variant_id,
+                            'purchase_line_id' => $detail->id,
+                        ]);
+                        continue;
+                    }
+
                     // Create or update serial number
                     $serial = ProductSerialNumber::updateOrCreate(
                         ['serial_no' => $serialNo],
@@ -156,17 +204,24 @@ class SerialTrackingService
                         ]
                     );
 
-                    // Log history
-                    SerialNumberHistory::create([
-                        'serial_number_id' => $serial->id,
-                        'type' => 'purchase',
-                        'reference_id' => $purchase->id,
-                        'from_location_id' => null,
-                        'to_location_id' => $purchase->warehouse_id,
-                        'customer_id' => null,
-                        'notes' => 'Registered via Purchase: ' . $purchase->Ref,
-                        'created_by' => $userId,
-                    ]);
+                    // Log history only if not already logged for this purchase
+                    $historyExists = SerialNumberHistory::where('serial_number_id', $serial->id)
+                        ->where('type', 'purchase')
+                        ->where('reference_id', $purchase->id)
+                        ->exists();
+
+                    if (!$historyExists) {
+                        SerialNumberHistory::create([
+                            'serial_number_id' => $serial->id,
+                            'type' => 'purchase',
+                            'reference_id' => $purchase->id,
+                            'from_location_id' => null,
+                            'to_location_id' => $purchase->warehouse_id,
+                            'customer_id' => null,
+                            'notes' => 'Registered via Purchase: ' . $purchase->Ref,
+                            'created_by' => $userId,
+                        ]);
+                    }
                 }
             }
         }
@@ -175,22 +230,27 @@ class SerialTrackingService
     /**
      * Reverse serials for a single purchase detail line
      */
-    protected function reverseForPurchaseDetail(PurchaseDetail $detail): void
+    public function reverseForPurchaseDetail(PurchaseDetail $detail, array $allNewSerials = []): void
     {
         $serialNumbers = ProductSerialNumber::where('purchase_line_id', $detail->id)->get();
         foreach ($serialNumbers as $serial) {
             if ($serial->status === 'sold') {
-                throw new \Exception("Cannot modify/delete purchase: Serial number {$serial->serial_no} is already sold.");
+                if (in_array($serial->serial_no, $allNewSerials)) {
+                    continue;
+                }
+                throw new \Exception("Cannot remove serial number {$serial->serial_no} from purchase because it is already sold.");
             }
-            SerialNumberHistory::where('serial_number_id', $serial->id)->delete();
-            $serial->delete();
+            if (!in_array($serial->serial_no, $allNewSerials)) {
+                SerialNumberHistory::where('serial_number_id', $serial->id)->delete();
+                $serial->delete();
+            }
         }
     }
 
     /**
      * Reverse serials for multiple purchase detail lines
      */
-    public function reverseForPurchaseDetails($purchaseDetails): void
+    public function reverseForPurchaseDetails($purchaseDetails, array $allNewSerials = []): void
     {
         if (!$this->isSupported()) {
             return;
@@ -198,7 +258,7 @@ class SerialTrackingService
 
         foreach ($purchaseDetails as $detail) {
             if ($detail && isset($detail->id)) {
-                $this->reverseForPurchaseDetail($detail);
+                $this->reverseForPurchaseDetail($detail, $allNewSerials);
             }
         }
     }
@@ -219,17 +279,20 @@ class SerialTrackingService
                 continue;
             }
 
+            $pInfo = $this->getProductLabel($productId, $item);
+            $pLabel = $pInfo['label'];
+
             $qty = (float) ($item['quantity'] ?? 0);
             $requiredCount = (int) floor($qty);
             $serials = $this->parseSerials($item['serial_numbers'] ?? $item['imei_number'] ?? '');
 
             if (count($serials) !== $requiredCount) {
-                $errors[] = "Product " . ($item['name'] ?? "ID $productId") . " requires $requiredCount serial numbers, but " . count($serials) . " were selected.";
+                $errors[] = "Quantity Unavailable: Product requires $requiredCount serial numbers, but " . count($serials) . " were selected. {$pLabel}.";
                 continue;
             }
 
             if (count(array_unique($serials)) !== count($serials)) {
-                $errors[] = "Product " . ($item['name'] ?? "ID $productId") . " contains duplicate serial numbers in the input.";
+                $errors[] = "Duplicate Submission: Duplicate serial numbers detected in input for {$pLabel}.";
                 continue;
             }
 
@@ -243,13 +306,15 @@ class SerialTrackingService
                 $belongsToCurrentSale = $saleId && $serial && $serial->soldSellLine
                     && (int) $serial->soldSellLine->sale_id === (int) $saleId;
                 if (!$serial) {
-                    $errors[] = "Serial number $cleanNo does not exist in the database.";
+                    $errors[] = "Product Not Found: Serial number '$cleanNo' does not exist in the database. {$pLabel}.";
                 } elseif ((int) $serial->product_id !== (int) $productId) {
-                    $errors[] = "Serial number $cleanNo belongs to a different product.";
+                    $errors[] = "Product Mismatch: Serial number '$cleanNo' belongs to a different product. {$pLabel}.";
+                } elseif ($serial->status === 'sold' && ! $belongsToCurrentSale) {
+                    $errors[] = "Product Already Sold: This product has already been sold (Serial: '$cleanNo'). {$pLabel}.";
                 } elseif (($serial->status !== 'available' || $serial->service_job_id !== null) && ! $belongsToCurrentSale) {
-                    $errors[] = "Serial number $cleanNo is not available (Current status: {$serial->status}).";
+                    $errors[] = "Quantity Unavailable: Serial number '$cleanNo' is not available (Current status: {$serial->status}). {$pLabel}.";
                 } elseif (! $belongsToCurrentSale && !empty($serial->current_location_id) && (int)$serial->current_location_id !== (int)$warehouseId) {
-                    $errors[] = "Serial number $cleanNo is not located in the selected warehouse.";
+                    $errors[] = "Insufficient Stock: Serial number '$cleanNo' is not located in the selected warehouse. {$pLabel}.";
                 }
             }
         }
@@ -370,17 +435,20 @@ class SerialTrackingService
                 continue;
             }
 
+            $pInfo = $this->getProductLabel($productId, $item);
+            $pLabel = $pInfo['label'];
+
             $qty = (float) ($item['quantity'] ?? 0);
             $requiredCount = (int) floor($qty);
             $serials = $this->parseSerials($item['serial_numbers'] ?? $item['imei_number'] ?? '');
 
             if (count($serials) !== $requiredCount) {
-                $errors[] = "Product " . ($item['name'] ?? "ID $productId") . " requires $requiredCount serial numbers, but " . count($serials) . " were selected.";
+                $errors[] = "Quantity Unavailable: Product requires $requiredCount serial numbers, but " . count($serials) . " were selected. {$pLabel}.";
                 continue;
             }
 
             if (count(array_unique($serials)) !== count($serials)) {
-                $errors[] = "Product " . ($item['name'] ?? "ID $productId") . " contains duplicate serial numbers in the input.";
+                $errors[] = "Duplicate Submission: Duplicate serial numbers detected in input for {$pLabel}.";
                 continue;
             }
 
@@ -388,13 +456,13 @@ class SerialTrackingService
             foreach ($serials as $serialNo) {
                 $serial = ProductSerialNumber::where('serial_no', $serialNo)->first();
                 if (!$serial) {
-                    $errors[] = "Serial number $serialNo does not exist in the database.";
+                    $errors[] = "Product Not Found: Serial number '$serialNo' does not exist in the database. {$pLabel}.";
                 } elseif ((int) $serial->product_id !== (int) $productId) {
-                    $errors[] = "Serial number $serialNo belongs to a different product.";
+                    $errors[] = "Product Mismatch: Serial number '$serialNo' belongs to a different product. {$pLabel}.";
                 } elseif ($serial->status !== 'available' || $serial->service_job_id !== null) {
-                    $errors[] = "Serial number $serialNo is not available (Current status: {$serial->status}).";
+                    $errors[] = "Quantity Unavailable: Serial number '$serialNo' is not available (Current status: {$serial->status}). {$pLabel}.";
                 } elseif ($serial->current_location_id != $fromWarehouseId) {
-                    $errors[] = "Serial number $serialNo is not located in the source warehouse.";
+                    $errors[] = "Insufficient Stock: Serial number '$serialNo' is not located in the source warehouse. {$pLabel}.";
                 }
             }
         }
@@ -509,12 +577,15 @@ class SerialTrackingService
                 continue;
             }
 
+            $pInfo = $this->getProductLabel($productId, $item);
+            $pLabel = $pInfo['label'];
+
             $qty = (float) ($item['quantity'] ?? 0);
             $type = $item['type'] ?? 'sub';
             $serials = $this->parseSerials($item['serial_numbers'] ?? $item['imei_number'] ?? '');
 
             if (count($serials) !== (int) $qty) {
-                $errors[] = "Product " . ($item['name'] ?? "ID $productId") . ": Quantity is $qty, but " . count($serials) . " serial numbers were provided.";
+                $errors[] = "Quantity Unavailable: Quantity is $qty, but " . count($serials) . " serial numbers were provided. {$pLabel}.";
                 continue;
             }
 
@@ -522,16 +593,16 @@ class SerialTrackingService
                 foreach ($serials as $serialNo) {
                     $serial = ProductSerialNumber::where('serial_no', $serialNo)->first();
                     if (!$serial) {
-                        $errors[] = "Serial number $serialNo does not exist in the database.";
+                        $errors[] = "Product Not Found: Serial number '$serialNo' does not exist in the database. {$pLabel}.";
                     } elseif ($serial->status !== 'available' || $serial->service_job_id !== null) {
-                        $errors[] = "Serial number $serialNo is not available (Current status: {$serial->status}).";
+                        $errors[] = "Quantity Unavailable: Serial number '$serialNo' is not available (Current status: {$serial->status}). {$pLabel}.";
                     } elseif ($serial->current_location_id != $warehouseId) {
-                        $errors[] = "Serial number $serialNo is not located in the selected warehouse.";
+                        $errors[] = "Insufficient Stock: Serial number '$serialNo' is not located in the selected warehouse. {$pLabel}.";
                     }
                 }
             } else {
                 if (count(array_unique($serials)) !== count($serials)) {
-                    $errors[] = "Product " . ($item['name'] ?? "ID $productId") . " contains duplicate serial numbers in the input.";
+                    $errors[] = "Duplicate Submission: Duplicate serial numbers detected in input for {$pLabel}.";
                     continue;
                 }
 
@@ -540,7 +611,7 @@ class SerialTrackingService
                     ->pluck('serial_no')
                     ->toArray();
                 if (!empty($dbDuplicates)) {
-                    $errors[] = "The following serial numbers are already registered in the system: " . implode(', ', $dbDuplicates);
+                    $errors[] = "Duplicate Submission: Serial numbers (" . implode(', ', $dbDuplicates) . ") are already registered in the system. {$pLabel}.";
                 }
             }
         }
@@ -668,7 +739,7 @@ class SerialTrackingService
     /**
      * Validate purchase return serial inputs
      */
-    public function validatePurchaseReturn(array $details, int $warehouseId): array
+    public function validatePurchaseReturn(array $details, int $warehouseId, ?int $returnId = null): array
     {
         $errors = [];
         if (!$this->isSupported()) {
@@ -681,22 +752,77 @@ class SerialTrackingService
                 continue;
             }
 
+            $pInfo = $this->getProductLabel($productId, $item);
+            $pLabel = $pInfo['label'];
+
             $qty = (float) ($item['quantity'] ?? 0);
-            $serials = $this->parseSerials($item['serial_numbers'] ?? $item['imei_number'] ?? '');
+            if ($qty <= 0) {
+                continue;
+            }
+
+            $rawSerials = $this->parseSerials($item['serial_numbers'] ?? $item['imei_number'] ?? '');
+
+            // If more serials provided than quantity (e.g. original purchase serial list sent),
+            // filter down to serials that are actually available in this warehouse for this return.
+            if (count($rawSerials) > (int) $qty) {
+                $query = ProductSerialNumber::whereIn('serial_no', $rawSerials)
+                    ->where('product_id', $productId);
+                if ($returnId) {
+                    $query->where(function ($q) use ($warehouseId, $returnId) {
+                        $q->where(function ($sub) use ($warehouseId) {
+                            $sub->where('status', 'available')
+                                ->where('current_location_id', $warehouseId);
+                        })->orWhere(function ($sub) use ($returnId) {
+                            $sub->where('status', 'returned_to_supplier')
+                                ->whereHas('histories', function ($qh) use ($returnId) {
+                                    $qh->where('type', 'purchase_return')
+                                       ->where('reference_id', $returnId);
+                                });
+                        });
+                    });
+                } else {
+                    $query->where('status', 'available')
+                        ->where('current_location_id', $warehouseId)
+                        ->whereNull('service_job_id');
+                }
+                $availableOnly = $query->pluck('serial_no')->toArray();
+                if (count($availableOnly) >= (int) $qty) {
+                    $serials = array_slice($availableOnly, 0, (int) $qty);
+                } else {
+                    $serials = $rawSerials;
+                }
+            } else {
+                $serials = $rawSerials;
+            }
 
             if (count($serials) !== (int) $qty) {
-                $errors[] = "Product " . ($item['name'] ?? "ID $productId") . ": Quantity is $qty, but " . count($serials) . " serial numbers were selected.";
+                $errors[] = "Quantity Unavailable: Product requires $qty serial numbers, but " . count($serials) . " were selected. {$pLabel}.";
                 continue;
             }
 
             foreach ($serials as $serialNo) {
                 $serial = ProductSerialNumber::where('serial_no', $serialNo)->first();
                 if (!$serial) {
-                    $errors[] = "Serial number $serialNo does not exist in the database.";
+                    $errors[] = "Product Not Found: Serial number '$serialNo' does not exist in the database. {$pLabel}.";
+                    continue;
+                }
+
+                if ($returnId && $serial->status === 'returned_to_supplier') {
+                    $wasReturnedHere = SerialNumberHistory::where('serial_number_id', $serial->id)
+                        ->where('type', 'purchase_return')
+                        ->where('reference_id', $returnId)
+                        ->exists();
+                    if ($wasReturnedHere) {
+                        continue;
+                    }
+                }
+
+                if ($serial->status === 'sold') {
+                    $errors[] = "Product Already Sold: This product has already been sold and cannot be returned to supplier (Serial: '$serialNo'). {$pLabel}.";
                 } elseif ($serial->status !== 'available' || $serial->service_job_id !== null) {
-                    $errors[] = "Serial number $serialNo is not available (Current status: {$serial->status}).";
+                    $errors[] = "Return Validation Failed: Product serial '$serialNo' is not available for return (Current status: {$serial->status}). {$pLabel}.";
                 } elseif ($serial->current_location_id != $warehouseId) {
-                    $errors[] = "Serial number $serialNo is not located in the selected warehouse.";
+                    $errors[] = "Insufficient Stock: Serial number '$serialNo' is not located in the selected warehouse. {$pLabel}.";
                 }
             }
         }
@@ -727,9 +853,27 @@ class SerialTrackingService
                 continue;
             }
 
-            $serials = $this->parseSerials($row['serial_numbers'] ?? $row['imei_number'] ?? '');
-            if (empty($serials)) {
+            $qty = (float) ($row['quantity'] ?? $detail->quantity ?? 0);
+            if ($qty <= 0) {
                 continue;
+            }
+
+            $rawSerials = $this->parseSerials($row['serial_numbers'] ?? $row['imei_number'] ?? '');
+            if (empty($rawSerials)) {
+                continue;
+            }
+
+            if (count($rawSerials) > (int) $qty) {
+                $serials = ProductSerialNumber::whereIn('serial_no', $rawSerials)
+                    ->where('product_id', $productId)
+                    ->where('status', 'available')
+                    ->where('current_location_id', $return->warehouse_id)
+                    ->whereNull('service_job_id')
+                    ->limit((int) $qty)
+                    ->pluck('serial_no')
+                    ->toArray();
+            } else {
+                $serials = $rawSerials;
             }
 
             $this->reverseForPurchaseReturnDetail($detail);
@@ -805,18 +949,27 @@ class SerialTrackingService
                 continue;
             }
 
+            $pInfo = $this->getProductLabel($productId, $item);
+            $pLabel = $pInfo['label'];
+
             $qty = (float) ($item['quantity'] ?? 0);
+            if ($qty <= 0) {
+                continue;
+            }
+
             $serials = $this->parseSerials($item['serial_numbers'] ?? $item['imei_number'] ?? '');
 
             if (count($serials) !== (int) $qty) {
-                $errors[] = "Product " . ($item['name'] ?? "ID $productId") . ": Quantity is $qty, but " . count($serials) . " serial numbers were selected.";
+                $errors[] = "Quantity Unavailable: Product requires $qty serial numbers, but " . count($serials) . " were selected. {$pLabel}.";
                 continue;
             }
 
             foreach ($serials as $serialNo) {
                 $serial = ProductSerialNumber::where('serial_no', $serialNo)->first();
-                if ($serial && $serial->status === 'available' && $serial->current_location_id == $warehouseId) {
-                    $errors[] = "Serial number $serialNo is already available in the selected warehouse.";
+                if ($serial && (int) $serial->product_id !== (int) $productId) {
+                    $errors[] = "Product Mismatch: Serial number '$serialNo' does not belong to {$pLabel}.";
+                } elseif ($serial && $serial->status === 'available' && $serial->current_location_id == $warehouseId) {
+                    $errors[] = "Return Validation Failed: Product serial '$serialNo' is already available in the selected warehouse (not sold). {$pLabel}.";
                 }
             }
         }
@@ -968,28 +1121,31 @@ class SerialTrackingService
                 continue;
             }
 
+            $pInfo = $this->getProductLabel($productId, $item);
+            $pLabel = $pInfo['label'];
+
             $qty = (float) ($item['quantity'] ?? 0);
             $requiredCount = (int) floor($qty);
             $serials = $this->parseSerials($item['serial_numbers'] ?? $item['imei_number'] ?? '');
 
             if (count($serials) !== $requiredCount) {
-                $errors[] = "Product " . ($item['name'] ?? "ID $productId") . " requires $requiredCount serial numbers, but " . count($serials) . " were selected.";
+                $errors[] = "Quantity Unavailable: Product requires $requiredCount serial numbers, but " . count($serials) . " were selected. {$pLabel}.";
                 continue;
             }
 
             if (count(array_unique($serials)) !== count($serials)) {
-                $errors[] = "Product " . ($item['name'] ?? "ID $productId") . " contains duplicate serial numbers in the input.";
+                $errors[] = "Duplicate Submission: Duplicate serial numbers detected in input for {$pLabel}.";
                 continue;
             }
 
             foreach ($serials as $serialNo) {
                 $serial = ProductSerialNumber::where('serial_no', $serialNo)->first();
                 if (!$serial) {
-                    $errors[] = "Serial number $serialNo does not exist in the database.";
+                    $errors[] = "Product Not Found: Serial number '$serialNo' does not exist in the database. {$pLabel}.";
                 } elseif ($serial->status !== 'available' || $serial->service_job_id !== null) {
-                    $errors[] = "Serial number $serialNo is not available (Current status: {$serial->status}).";
+                    $errors[] = "Quantity Unavailable: Serial number '$serialNo' is not available (Current status: {$serial->status}). {$pLabel}.";
                 } elseif ($serial->current_location_id != $warehouseId) {
-                    $errors[] = "Serial number $serialNo is not located in the selected warehouse.";
+                    $errors[] = "Insufficient Stock: Serial number '$serialNo' is not located in the selected warehouse. {$pLabel}.";
                 }
             }
         }

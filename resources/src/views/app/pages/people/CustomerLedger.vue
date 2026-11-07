@@ -23,19 +23,29 @@
             <span class="mr-3">{{ $t('Tax_Number') }}: <b>{{ client.tax_number || '-' }}</b></span>
           </div>
         </div>
-        <div class="text-right">
-          <div class="text-white small mb-1">
+        <div class="text-right d-flex flex-column align-items-end">
+          <div class="text-white small mb-2">
             <lucide-icon class="mr-1" name="mail" />{{ client.email || '-' }} &nbsp;|&nbsp;
             <lucide-icon class="mr-1" name="phone" />{{ client.phone || '-' }}
           </div>
-          <b-button size="sm" variant="light" class="mr-2" @click="$router.push({ name: 'Customers' })">
-            <lucide-icon class="mr-1" name="chevron-left" /> {{ $t('Back') }}
-          </b-button>
-          <b-button size="sm" variant="primary" class="mr-2" :disabled="exportingPdf" @click="exportPdf">
-            <lucide-icon class="mr-1" name="file-down" />
-            <span v-if="!exportingPdf">{{ $t('Download_PDF') }}</span>
-            <span v-else>{{ $t('Generating') }}</span>
-          </b-button>
+          <div class="d-flex align-items-center flex-wrap justify-content-end" style="gap: 8px;">
+            <div style="min-width: 240px; text-align: left;">
+              <customer-select
+                :placeholder="$t('Switch_Customer') || 'Search customer...'"
+                :value="id"
+                :clearable="false"
+                @input="onSwitchCustomer"
+              />
+            </div>
+            <b-button size="sm" variant="light" @click="$router.push({ name: 'Customers' })">
+              <lucide-icon class="mr-1" name="chevron-left" /> {{ $t('Back') }}
+            </b-button>
+            <b-button size="sm" variant="primary" :disabled="exportingPdf" @click="exportPdf">
+              <lucide-icon class="mr-1" name="file-down" />
+              <span v-if="!exportingPdf">{{ $t('Download_PDF') }}</span>
+              <span v-else>{{ $t('Generating') }}</span>
+            </b-button>
+          </div>
         </div>
       </div>
 
@@ -385,19 +395,32 @@ export default {
     'payments.search'(v){ this._debounce('payments', this.fetchPayments) },
     'quotations.search'(v){ this._debounce('quotations', this.fetchQuotations) },
     'returns.search'(v){ this._debounce('returns', this.fetchReturns) },
+    '$route.params.id'(newId) {
+      if (newId) {
+        this.reloadLedger();
+      }
+    },
   },
   created(){
-    this.pageLoading = true
-    this.fetchClientBrief()
-      .then(() => Promise.all([
-        this.fetchSales(),
-        this.fetchPayments(),
-        this.fetchQuotations(),
-        this.fetchReturns()
-      ]))
-      .finally(()=>{ this.pageLoading = false })
+    this.reloadLedger();
   },
   methods:{
+    reloadLedger() {
+      this.pageLoading = true;
+      this.fetchClientBrief()
+        .then(() => Promise.all([
+          this.fetchSales(),
+          this.fetchPayments(),
+          this.fetchQuotations(),
+          this.fetchReturns()
+        ]))
+        .finally(() => { this.pageLoading = false; });
+    },
+    onSwitchCustomer(newId) {
+      if (newId && String(newId) !== String(this.id)) {
+        this.$router.push({ name: 'CustomerLedger', params: { id: newId } });
+      }
+    },
     // ---- utils ----
     money(v){
       try{

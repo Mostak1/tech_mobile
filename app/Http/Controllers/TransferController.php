@@ -142,13 +142,26 @@ class TransferController extends BaseController
             'transfer.to_warehouse' => 'required',
         ]);
 
+        $validationService = app(\App\Services\TransactionValidationService::class);
+        $stockErrors = $validationService->validateTransferStock($request['details'], (int) $request->transfer['from_warehouse']);
+        if (!empty($stockErrors)) {
+            return response()->json([
+                'success' => false,
+                'title' => 'Insufficient Stock',
+                'message' => implode("\n", $stockErrors),
+                'errors' => $stockErrors,
+            ], 422);
+        }
+
         $serialService = app(\App\Services\SerialTrackingService::class);
         if ($serialService->isSupported()) {
             $serialErrors = $serialService->validateTransfer($request['details'], (int) $request->transfer['from_warehouse']);
             if (!empty($serialErrors)) {
                 return response()->json([
                     'success' => false,
-                    'message' => implode(' ', $serialErrors),
+                    'title' => 'Serial Validation Failed',
+                    'message' => implode("\n", $serialErrors),
+                    'errors' => $serialErrors,
                 ], 422);
             }
         }
@@ -339,13 +352,26 @@ class TransferController extends BaseController
 
         $this->authorizeForUser($request->user('api'), 'update', Transfer::class);
 
+        $validationService = app(\App\Services\TransactionValidationService::class);
+        $stockErrors = $validationService->validateTransferStock($request['details'], (int) $request->transfer['from_warehouse']);
+        if (!empty($stockErrors)) {
+            return response()->json([
+                'success' => false,
+                'title' => 'Insufficient Stock',
+                'message' => implode("\n", $stockErrors),
+                'errors' => $stockErrors,
+            ], 422);
+        }
+
         $serialService = app(\App\Services\SerialTrackingService::class);
         if ($serialService->isSupported()) {
             $serialErrors = $serialService->validateTransfer($request['details'], (int) $request->transfer['from_warehouse']);
             if (!empty($serialErrors)) {
                 return response()->json([
                     'success' => false,
-                    'message' => implode(' ', $serialErrors),
+                    'title' => 'Serial Validation Failed',
+                    'message' => implode("\n", $serialErrors),
+                    'errors' => $serialErrors,
                 ], 422);
             }
         }

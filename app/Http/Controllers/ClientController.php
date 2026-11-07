@@ -400,11 +400,104 @@ class ClientController extends BaseController
 
     // ------------- Get Clients Without Paginate -------------\\
 
-    public function Get_Clients_Without_Paginate()
+    public function Get_Clients_Without_Paginate(Request $request)
     {
-        $clients = Client::where('deleted_at', '=', null)->get(['id', 'name', 'phone']);
+        $search = trim((string) ($request->get('search') ?? $request->get('q') ?? ''));
+        $selectedId = $request->get('selected_id');
+        $limit = $request->has('limit') ? min(50, max(1, (int) $request->get('limit'))) : null;
+
+        $query = Client::whereNull('deleted_at');
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'LIKE', "%{$search}%")
+                  ->orWhere('phone', 'LIKE', "%{$search}%")
+                  ->orWhere('code', 'LIKE', "%{$search}%");
+            });
+            if ($limit) {
+                $query->limit($limit);
+            }
+        } elseif ($selectedId) {
+            $query->where('id', $selectedId);
+        } elseif ($limit) {
+            $query->orderBy('id', 'desc')->limit($limit);
+        }
+
+        $clients = $query->get(['id', 'name', 'phone']);
 
         return response()->json($clients);
+    }
+
+    // ------------- Search Clients Dynamic (Server-side) -------------\\
+
+    public function search_clients(Request $request)
+    {
+        $search = trim((string) ($request->get('search') ?? $request->get('q') ?? ''));
+        $selectedId = $request->get('selected_id');
+        $limit = min(50, max(1, (int) ($request->get('limit') ?? 20)));
+
+        $query = Client::whereNull('deleted_at');
+
+        if ($search !== '') {
+            $words = array_values(array_filter(explode(' ', $search), function ($w) {
+                return trim($w) !== '';
+            }));
+
+            $query->where(function ($q) use ($words, $search) {
+                $q->where('name', 'LIKE', "%{$search}%")
+                  ->orWhere('phone', 'LIKE', "%{$search}%")
+                  ->orWhere('code', 'LIKE', "%{$search}%")
+                  ->orWhere('email', 'LIKE', "%{$search}%");
+
+                if (count($words) > 1) {
+                    $q->orWhere(function ($subQ) use ($words) {
+                        foreach ($words as $word) {
+                            $subQ->where(function ($wQ) use ($word) {
+                                $wQ->where('name', 'LIKE', "%{$word}%")
+                                   ->orWhere('phone', 'LIKE', "%{$word}%")
+                                   ->orWhere('code', 'LIKE', "%{$word}%");
+                            });
+                        }
+                    });
+                }
+            });
+
+            $clients = $query->orderBy('name', 'asc')->limit($limit)->get();
+        } elseif ($selectedId) {
+            $clients = $query->where('id', $selectedId)->get();
+        } else {
+            $clients = $query->orderBy('id', 'desc')->limit(10)->get();
+        }
+
+        if ($selectedId && !$clients->contains('id', $selectedId)) {
+            $selectedClient = Client::whereNull('deleted_at')->where('id', $selectedId)->first();
+            if ($selectedClient) {
+                $clients->prepend($selectedClient);
+            }
+        }
+
+        $formatted = $clients->map(function ($c) {
+            $phone = trim((string) ($c->phone ?? ''));
+            $name = trim((string) ($c->name ?? ''));
+            $label = $phone !== '' ? "{$name} ({$phone})" : $name;
+
+            return [
+                'id' => $c->id,
+                'value' => $c->id,
+                'name' => $name,
+                'phone' => $phone,
+                'label' => $label,
+                'code' => $c->code,
+                'email' => $c->email,
+                'city' => $c->city,
+                'tax_number' => $c->tax_number,
+                'points' => (float) ($c->points ?? 0),
+                'credit_limit' => (float) ($c->credit_limit ?? 0),
+                'is_royalty_eligible' => (int) ($c->is_royalty_eligible ?? 0),
+            ];
+        });
+
+        return response()->json($formatted);
     }
 
     // ------------- Get Clients get_client_store_data Paginate -------------\\

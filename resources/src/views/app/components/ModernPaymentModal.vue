@@ -1083,24 +1083,28 @@ export default {
           if (typeof NProgress !== 'undefined') NProgress.done();
           this.paymentProcessing = false;
           this.isSubmitting = false;
-          this.makeToast('danger', this.$t ? this.$t('InvalidData') : 'Invalid data', this.$t ? this.$t('Failed') : 'Failed');
+          if (this.$showApiError) {
+            this.$showApiError(response && response.data);
+          } else {
+            this.makeToast('danger', (response && response.data && response.data.message) || (this.$t ? this.$t('InvalidData') : 'Invalid data'), this.$t ? this.$t('Failed') : 'Failed');
+          }
         }
       } catch (error) {
         if (typeof NProgress !== 'undefined') NProgress.done();
         this.paymentProcessing = false;
         this.isSubmitting = false;
-        const isNetworkError = !error.response || error.message === 'Network Error';
-        // In this non-card branch, true offline handling is already covered by the
-        // explicit (!isOnline && !usingCard) path above. Here we are effectively
-        // in "online" mode, so do NOT silently queue a new offline sale; instead
-        // surface an error toast so the cashier can react.
+        const isNetworkError = !error.response && error.message === 'Network Error';
         if (isNetworkError) {
           const msg = this.$t
             ? (this.$t('pos.NetworkError') || 'Network error, please try again.')
             : 'Network error, please try again.';
           this.makeToast && this.makeToast('danger', msg, this.$t ? this.$t('Failed') : 'Failed');
         } else {
-          this.makeToast('danger', this.$t ? this.$t('InvalidData') : 'Invalid data', this.$t ? this.$t('Failed') : 'Failed');
+          if (this.$showApiError) {
+            this.$showApiError(error);
+          } else {
+            this.makeToast('danger', (error && error.message) || (this.$t ? this.$t('InvalidData') : 'Invalid data'), this.$t ? this.$t('Failed') : 'Failed');
+          }
         }
       }
     },

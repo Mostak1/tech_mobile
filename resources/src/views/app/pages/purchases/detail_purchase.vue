@@ -22,7 +22,7 @@
             <!-- Primary Actions Group -->
             <div class="button-group primary-actions">
               <router-link
-                v-if="currentUserPermissions && currentUserPermissions.includes('Purchases_edit') && purchase.purchase_has_return == 'no'"
+                v-if="currentUserPermissions && currentUserPermissions.includes('Purchases_edit')"
                 title="Edit"
                 class="action-btn btn-edit"
                 :to="{ name:'edit_purchase', params: { id: $route.params.id } }"

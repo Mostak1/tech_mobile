@@ -118,13 +118,26 @@ class DamageController extends BaseController
             'warehouse_id.required' => 'Warehouse is required',
         ]);
 
+        $validationService = app(\App\Services\TransactionValidationService::class);
+        $stockErrors = $validationService->validateAdjustmentStock($request['details'], (int) $request->warehouse_id);
+        if (!empty($stockErrors)) {
+            return response()->json([
+                'success' => false,
+                'title' => 'Insufficient Stock',
+                'message' => implode("\n", $stockErrors),
+                'errors' => $stockErrors,
+            ], 422);
+        }
+
         $serialService = app(\App\Services\SerialTrackingService::class);
         if ($serialService->isSupported()) {
             $serialErrors = $serialService->validateDamage($request['details'], $request->warehouse_id);
             if (!empty($serialErrors)) {
                 return response()->json([
                     'success' => false,
-                    'message' => implode(' ', $serialErrors),
+                    'title' => 'Serial Validation Failed',
+                    'message' => implode("\n", $serialErrors),
+                    'errors' => $serialErrors,
                 ], 422);
             }
         }
@@ -262,13 +275,26 @@ class DamageController extends BaseController
             'warehouse_id' => 'required',
         ]);
 
+        $validationService = app(\App\Services\TransactionValidationService::class);
+        $stockErrors = $validationService->validateAdjustmentStock($request['details'], (int) $request->warehouse_id);
+        if (!empty($stockErrors)) {
+            return response()->json([
+                'success' => false,
+                'title' => 'Insufficient Stock',
+                'message' => implode("\n", $stockErrors),
+                'errors' => $stockErrors,
+            ], 422);
+        }
+
         $serialService = app(\App\Services\SerialTrackingService::class);
         if ($serialService->isSupported()) {
             $serialErrors = $serialService->validateDamage($request['details'], $request->warehouse_id);
             if (!empty($serialErrors)) {
                 return response()->json([
                     'success' => false,
-                    'message' => implode(' ', $serialErrors),
+                    'title' => 'Serial Validation Failed',
+                    'message' => implode("\n", $serialErrors),
+                    'errors' => $serialErrors,
                 ], 422);
             }
         }

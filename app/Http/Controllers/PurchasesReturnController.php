@@ -181,13 +181,26 @@ class PurchasesReturnController extends BaseController
     {
         $this->authorizeForUser($request->user('api'), 'create', PurchaseReturn::class);
 
+        $validationService = app(\App\Services\TransactionValidationService::class);
+        $returnErrors = $validationService->validatePurchaseReturn($request['details'], (int) $request->warehouse_id, $request->purchase_id ? (int) $request->purchase_id : null);
+        if (!empty($returnErrors)) {
+            return response()->json([
+                'success' => false,
+                'title' => 'Return Validation Failed',
+                'message' => implode("\n", $returnErrors),
+                'errors' => $returnErrors,
+            ], 422);
+        }
+
         $serialService = app(\App\Services\SerialTrackingService::class);
         if ($serialService->isSupported()) {
             $serialErrors = $serialService->validatePurchaseReturn($request['details'], (int) $request->warehouse_id);
             if (!empty($serialErrors)) {
                 return response()->json([
                     'success' => false,
-                    'message' => implode(' ', $serialErrors),
+                    'title' => 'Serial Validation Failed',
+                    'message' => implode("\n", $serialErrors),
+                    'errors' => $serialErrors,
                 ], 422);
             }
         }
@@ -217,6 +230,7 @@ class PurchasesReturnController extends BaseController
             $persistedDetails = [];
             foreach ($data as $key => $value) {
                 $unit = Unit::where('id', $value['purchase_unit_id'])->first();
+                $qty = (float) ($value['quantity'] ?? 0);
                 $persistedDetails[$key] = PurchaseReturnDetails::create([
                     'purchase_return_id' => $order->id,
                     'quantity' => $value['quantity'],
@@ -229,10 +243,10 @@ class PurchasesReturnController extends BaseController
                     'product_id' => $value['product_id'],
                     'product_variant_id' => $value['product_variant_id'],
                     'total' => $value['subtotal'],
-                    'imei_number' => $value['serial_numbers'] ?? $value['imei_number'] ?? null,
+                    'imei_number' => $qty > 0 ? (is_array($value['serial_numbers'] ?? null) ? implode(', ', $value['serial_numbers']) : ($value['serial_numbers'] ?? $value['imei_number'] ?? null)) : null,
                 ]);
 
-                if ($order->statut == 'completed') {
+                if ($order->statut == 'completed' && $qty > 0) {
                     if ($value['product_variant_id'] !== null) {
 
                         $product_warehouse = product_warehouse::where('deleted_at', '=', null)
@@ -302,13 +316,26 @@ class PurchasesReturnController extends BaseController
     {
         $this->authorizeForUser($request->user('api'), 'update', PurchaseReturn::class);
 
+        $validationService = app(\App\Services\TransactionValidationService::class);
+        $returnErrors = $validationService->validatePurchaseReturn($request['details'], (int) $request->warehouse_id, $request->purchase_id ? (int) $request->purchase_id : null, (int) $id);
+        if (!empty($returnErrors)) {
+            return response()->json([
+                'success' => false,
+                'title' => 'Return Validation Failed',
+                'message' => implode("\n", $returnErrors),
+                'errors' => $returnErrors,
+            ], 422);
+        }
+
         $serialService = app(\App\Services\SerialTrackingService::class);
         if ($serialService->isSupported()) {
-            $serialErrors = $serialService->validatePurchaseReturn($request['details'], (int) $request->warehouse_id);
+            $serialErrors = $serialService->validatePurchaseReturn($request['details'], (int) $request->warehouse_id, (int) $id);
             if (!empty($serialErrors)) {
                 return response()->json([
                     'success' => false,
-                    'message' => implode(' ', $serialErrors),
+                    'title' => 'Serial Validation Failed',
+                    'message' => implode("\n", $serialErrors),
+                    'errors' => $serialErrors,
                 ], 422);
             }
         }
@@ -470,6 +497,7 @@ class PurchasesReturnController extends BaseController
                         }
                     }
 
+                    $qty = (float) ($product_detail['quantity'] ?? 0);
                     $orderDetails['purchase_return_id'] = $id;
                     $orderDetails['cost'] = $product_detail['Unit_cost'];
                     $orderDetails['purchase_unit_id'] = $product_detail['purchase_unit_id'];
@@ -481,7 +509,7 @@ class PurchasesReturnController extends BaseController
                     $orderDetails['product_id'] = $product_detail['product_id'];
                     $orderDetails['product_variant_id'] = $product_detail['product_variant_id'];
                     $orderDetails['total'] = $product_detail['subtotal'];
-                    $orderDetails['imei_number'] = $product_detail['serial_numbers'] ?? $product_detail['imei_number'] ?? null;
+                    $orderDetails['imei_number'] = $qty > 0 ? (is_array($product_detail['serial_numbers'] ?? null) ? implode(', ', $product_detail['serial_numbers']) : ($product_detail['serial_numbers'] ?? $product_detail['imei_number'] ?? null)) : null;
 
                     if (! in_array($product_detail['id'], $old_products_id)) {
                         $persistedDetail = PurchaseReturnDetails::Create($orderDetails);
@@ -932,6 +960,25 @@ class PurchasesReturnController extends BaseController
 
             }
 
+            $serialService = app(\App\Services\SerialTrackingService::class);
+            $is_serial_tracked = (bool) ($detail['product']['enable_serial_tracking'] ?? false);
+            $available_serials = [];
+            if ($is_serial_tracked && $serialService->isSupported()) {
+                $purchaseSerials = $serialService->parseSerials($detail->imei_number);
+                $available_serials = \App\Models\ProductSerialNumber::where('product_id', $detail->product_id)
+                    ->where('current_location_id', $Purchase_data->warehouse_id)
+                    ->where('status', 'available')
+                    ->whereNull('service_job_id')
+                    ->where(function ($q) use ($detail, $purchaseSerials) {
+                        $q->where('purchase_line_id', $detail->id);
+                        if (!empty($purchaseSerials)) {
+                            $q->orWhereIn('serial_no', $purchaseSerials);
+                        }
+                    })
+                    ->pluck('serial_no')
+                    ->toArray();
+            }
+
             $data['id'] = $detail->id;
             $data['detail_id'] = $detail_id += 1;
             $data['quantity'] = 0;
@@ -941,7 +988,10 @@ class PurchasesReturnController extends BaseController
             $data['purchase_unit_id'] = $unit->id;
 
             $data['is_imei'] = $detail['product']['is_imei'];
-            $data['imei_number'] = $detail->imei_number;
+            $data['enable_serial_tracking'] = $is_serial_tracked;
+            $data['available_serials'] = $available_serials;
+            $data['serial_numbers'] = [];
+            $data['imei_number'] = '';
             $data['is_batch_tracked'] = (bool) ($detail['product']['is_batch_tracked'] ?? false);
 
             if ($detail->discount_method == '2') {
@@ -1109,8 +1159,41 @@ class PurchasesReturnController extends BaseController
             $data['unitPurchase'] = $unit->ShortName;
             $data['purchase_unit_id'] = $unit->id;
 
+            $serialService = app(\App\Services\SerialTrackingService::class);
+            $is_serial_tracked = (bool) ($detail['product']['enable_serial_tracking'] ?? false);
+            $available_serials = [];
+            $current_serials = [];
+            if ($is_serial_tracked && $serialService->isSupported()) {
+                $current_serials = $serialService->parseSerials($detail->imei_number);
+                $purchase_detail = PurchaseDetail::where('purchase_id', $purchase_id)
+                    ->where('product_id', $detail->product_id)
+                    ->where('product_variant_id', $detail->product_variant_id)
+                    ->first();
+                $purchaseSerials = $purchase_detail ? $serialService->parseSerials($purchase_detail->imei_number) : [];
+
+                $inStockSerials = \App\Models\ProductSerialNumber::where('product_id', $detail->product_id)
+                    ->where('current_location_id', $Purchase_Return->warehouse_id)
+                    ->where('status', 'available')
+                    ->whereNull('service_job_id')
+                    ->where(function ($q) use ($purchase_detail, $purchaseSerials) {
+                        if ($purchase_detail) {
+                            $q->where('purchase_line_id', $purchase_detail->id);
+                        }
+                        if (!empty($purchaseSerials)) {
+                            $q->orWhereIn('serial_no', $purchaseSerials);
+                        }
+                    })
+                    ->pluck('serial_no')
+                    ->toArray();
+
+                $available_serials = array_values(array_unique(array_merge($current_serials, $inStockSerials)));
+            }
+
             $data['is_imei'] = $detail['product']['is_imei'];
-            $data['imei_number'] = $detail->imei_number;
+            $data['enable_serial_tracking'] = $is_serial_tracked;
+            $data['available_serials'] = $available_serials;
+            $data['serial_numbers'] = $current_serials;
+            $data['imei_number'] = implode(', ', $current_serials);
             $data['is_batch_tracked'] = (bool) ($detail['product']['is_batch_tracked'] ?? false);
 
             if ($detail->discount_method == '2') {

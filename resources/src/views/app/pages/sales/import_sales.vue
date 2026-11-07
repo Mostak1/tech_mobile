@@ -64,13 +64,12 @@
                   <b-col md="12" class="mb-3">
                     <validation-provider name="Customer" :rules="{ required: true}">
                       <b-form-group slot-scope="{ valid, errors }" :label="$t('Customer') + ' *'">
-                        <v-select
+                        <customer-select
                           :class="{'is-invalid': !!errors.length}"
                           :state="errors[0] ? false : (valid ? true : null)"
                           v-model="sale.client_id"
-                          :reduce="label => label.value"
+                          :initial-options="clients"
                           :placeholder="$t('Choose_Customer')"
-                          :options="clients.map(c => ({label: c.name, value: c.id}))"
                         />
                         <b-form-invalid-feedback>{{ errors[0] }}</b-form-invalid-feedback>
                       </b-form-group>

@@ -18,14 +18,12 @@
                     v-slot="validationContext"
                   >
                     <b-form-group :label="$t('Customer') + ' *'">
-                      <v-select
+                      <customer-select
                         :class="{ 'is-invalid': validationContext.errors.length }"
                         :state="getValidationState(validationContext)"
                         v-model="booking.customer_id"
-                        :reduce="c => c.id"
-                        label="name"
                         :placeholder="$t('Choose_Customer')"
-                        :options="customers"
+                        :initial-options="customers"
                       />
                       <b-form-invalid-feedback>
                         {{ validationContext.errors[0] }}

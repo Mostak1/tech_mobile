@@ -98,6 +98,11 @@ Vue.component('vue-excel-xlsx', ExcelExport);
 import LucideIcon from "./components/LucideIcon.vue";
 Vue.component('lucide-icon', LucideIcon);
 
+// Dynamic Server-side Customer Search Select Component
+import CustomerSelect from "./components/CustomerSelect.vue";
+Vue.component('customer-select', CustomerSelect);
+Vue.component('customer-search-select', CustomerSelect);
+
 window.axios = require('axios');
 
 window.axios.defaults.baseURL = '/api/';
@@ -232,12 +237,59 @@ axios.interceptors.response.use(
     // 404 / 403
     // ==========================
     if (status === 403) {
-      router.push({ name: 'not_authorize' });
+      if (!data || (!data.message && !data.title && !data.error)) {
+        router.push({ name: 'not_authorize' });
+      }
     }
 
-    return Promise.reject(data || error.message);
+    if (data && typeof data === 'object') {
+      window.__lastApiErrorData = data;
+      window.__lastApiErrorMessage = data.message || (Array.isArray(data.errors) ? data.errors.join('\n') : null);
+      if (error && typeof error === 'object') {
+        error.data = data;
+        error.response = error.response || { status, data, headers: error.response?.headers };
+        if (data.message) {
+          error.message = data.message;
+        }
+      }
+    }
+
+    return Promise.reject(error);
   }
 );
+
+import { parseApiError, showApiError } from './utils/errorNotifier';
+window.$showApiError = showApiError;
+window.$parseApiError = parseApiError;
+Vue.prototype.$showApiError = showApiError;
+Vue.prototype.$parseApiError = parseApiError;
+
+// Enhance BootstrapVue toast to prevent unhelpful generic "InvalidData" messages
+const enhanceBvToast = (bvToastInstance) => {
+  if (!bvToastInstance || bvToastInstance.__isEnhanced) return;
+  const originalToast = bvToastInstance.toast;
+  bvToastInstance.toast = function (message, options = {}) {
+    if (options && options.variant === 'danger' && window.__lastApiErrorMessage) {
+      const msgStr = typeof message === 'string' ? message.trim() : '';
+      const isGeneric = !msgStr ||
+        msgStr === 'InvalidData' ||
+        msgStr === 'Invalid data' ||
+        msgStr === 'Please fill the form correctly' ||
+        msgStr === 'Failed to load.' ||
+        msgStr.toLowerCase() === 'invalid data';
+
+      if (isGeneric && window.__lastApiErrorMessage) {
+        message = window.__lastApiErrorMessage;
+      }
+    }
+    return originalToast.call(this, message, options);
+  };
+  bvToastInstance.__isEnhanced = true;
+};
+
+if (Vue.prototype.$bvToast) {
+  enhanceBvToast(Vue.prototype.$bvToast);
+}
 
 
 import vSelect from 'vue-select'
@@ -271,13 +323,18 @@ loadI18n().then(i18n => {
     setupGlobalOfflineSync();
   } catch (e) {}
 
-  new Vue({
+  const appInstance = new Vue({
     store,
     router,
     VueCookie,
     i18n, // vue-i18n will inject $i18n to all components
     render: h => h(App),
   }).$mount("#app");
+
+  window.__appVueInstance = appInstance;
+  if (appInstance.$bvToast) {
+    enhanceBvToast(appInstance.$bvToast);
+  }
 });
 
   

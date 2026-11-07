@@ -46,14 +46,15 @@
                   <validation-provider name="Customer" :rules="{ required: true}">
                     <b-form-group slot-scope="{ valid, errors }" :label="$t('Customer') + ' ' + '*'">
                       <b-input-group class="category-input-group">
-                        <v-select
+                        <customer-select
+                          ref="customerSelectRef"
                           :class="{'is-invalid': !!errors.length}"
                           :state="errors[0] ? false : (valid ? true : null)"
                           v-model="selectedClientId"
                           @input="Selected_customer"
-                          :reduce="label => label.value"
+                          @selected="onCustomerObjSelected"
+                          :initial-options="clients"
                           :placeholder="$t('Choose_Customer')"
-                          :options="clients.map(c => ({label: c.phone ? c.name + ' (' + c.phone + ')' : c.name, value: c.id}))"
                         />
                         <b-input-group-append
                           v-if="currentUserPermissions && currentUserPermissions.includes('Customers_add')"
@@ -1363,10 +1364,17 @@ export default {
       this.sale.discount = 0;       // 👈 Reset applied discount
       this.sale.discount_Method = '2'; // Reset to fixed (default)
 
-      const client = this.clients.find(c => c.id === selectedClientId);
+      let client = customerObj || (this.clients ? this.clients.find(c => c.id === selectedClientId) : null);
+      if (!client && selectedClientId) {
+        // Fallback: search or create dummy container
+        client = { id: selectedClientId, name: this.client_name || "" };
+      }
       if (client) {
         this.client_name = client.name;
         this.selectedClientId = selectedClientId;
+        if (this.clients && !this.clients.some(c => c.id === client.id)) {
+          this.clients.push(client);
+        }
 
         // Fetch customer points
         try {
@@ -1406,6 +1414,15 @@ export default {
 
       // ✅ Recalculate totals after client change
       this.CalculTotal();
+    },
+
+    onCustomerObjSelected(customerObj) {
+      if (customerObj) {
+        this.client_name = customerObj.name;
+        if (customerObj.id && customerObj.id !== this.selectedClientId) {
+          this.Selected_customer(customerObj.id, customerObj);
+        }
+      }
     },
 
 
@@ -2037,14 +2054,18 @@ export default {
 
               const newClient = data;
               if (newClient && newClient.id) {
-                this.clients.push({
+                const formatted = {
                   id: newClient.id,
                   name: newClient.name,
                   phone: newClient.phone || ""
-                });
+                };
+                this.clients.push(formatted);
                 this.selectedClientId = newClient.id;
+                if (this.$refs.customerSelectRef) {
+                  this.$refs.customerSelectRef.addCustomer(formatted);
+                }
                 // Reuse existing selection logic (points, credit, etc.)
-                this.Selected_customer(newClient.id);
+                this.Selected_customer(newClient.id, formatted);
               }
 
               this.makeToast(
@@ -2684,12 +2705,14 @@ export default {
                 this.pendingPrintWindow.close();
               }
               this.pendingPrintWindow = null;
-              if (error.response && error.response.data && error.response.data.message) {
+              if (this.$showApiError) {
+                this.$showApiError(error);
+              } else if (error.response && error.response.data && error.response.data.message) {
                 this.makeToast("danger", error.response.data.message, this.$t("Failed"));
               } else {
                 this.makeToast(
                   "danger",
-                  this.$t("InvalidData"),
+                  (error && error.message) || this.$t("InvalidData"),
                   this.$t("Failed")
                 );
               }
