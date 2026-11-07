@@ -53,7 +53,6 @@
                           v-model="selectedClientId"
                           @input="Selected_customer"
                           @selected="onCustomerObjSelected"
-                          :initial-options="clients"
                           :placeholder="$t('Choose_Customer')"
                         />
                         <b-input-group-append

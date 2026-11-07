@@ -25,7 +25,6 @@
                     <b-form-group :label="$t('Customer') + ' *'">
                       <customer-select
                         v-model="contract.client_id"
-                        :initial-options="clients"
                         :placeholder="$t('Choose_Customer')"
                         :class="{ 'is-invalid': errors[0] }"
                       />

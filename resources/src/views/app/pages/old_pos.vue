@@ -404,7 +404,6 @@
           v-model="selectedClientId"
           :class="['customer-select-header', { 'has-selected-customer': selectedClientId }]"
           :placeholder="$t('Select_Customer')"
-          :initial-options="clients"
           :clearable="true"
           @input="onClientSelected(selectedClientId)"
         />

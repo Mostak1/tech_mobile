@@ -22,7 +22,6 @@
                         :state="getValidationState(validationContext)"
                         v-model="booking.customer_id"
                         :placeholder="$t('Choose_Customer')"
-                        :initial-options="customers"
                       />
                       <b-form-invalid-feedback>
                         {{ validationContext.errors[0] }}

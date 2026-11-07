@@ -563,7 +563,6 @@
                     <b-form-group :label="$t('DefaultCustomer')">
                       <customer-select
                         v-model="setting.client_id"
-                        :initial-options="clients"
                         :placeholder="$t('Choose_Customer')"
                       />
                     </b-form-group>
