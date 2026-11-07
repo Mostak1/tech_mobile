@@ -2,7 +2,7 @@
   <v-select
     ref="vSelect"
     class="customer-search-select"
-    :options="options"
+    :options="displayedOptions"
     :filterable="false"
     :loading="loading"
     :disabled="disabled"
@@ -16,7 +16,7 @@
     @close="onClose"
     v-bind="$attrs"
   >
-    <!-- No options / prompt slot -->
+    <!-- No options / search prompt slot -->
     <template slot="no-options" slot-scope="{ search, searching, loading }">
       <div class="p-2 text-center text-muted small">
         <span v-if="loading">
@@ -33,11 +33,11 @@
       </div>
     </template>
 
-    <!-- Custom option template with Name and Phone in brackets -->
+    <!-- Custom option template with Name and Phone in brackets (Light hover color matching Image 2) -->
     <template slot="option" slot-scope="option">
       <div class="d-flex align-items-center justify-content-between py-1 w-100" style="gap: 8px;">
-        <span class="customer-opt-name font-weight-bold text-dark">{{ option.name }}</span>
-        <span v-if="option.phone" class="customer-opt-phone text-primary small font-weight-bold" style="white-space: nowrap;">
+        <span class="customer-opt-name">{{ option.name }}</span>
+        <span v-if="option.phone" class="customer-opt-phone" style="white-space: nowrap;">
           ({{ option.phone }})
         </span>
       </div>
@@ -97,11 +97,11 @@ export default {
   data() {
     return {
       internalValue: this.value,
-      options: [],
+      searchResults: [],
+      selectedCustomerObj: null,
       loading: false,
       searchQuery: "",
       debounceTimer: null,
-      activeSearchLoading: null,
     };
   },
   computed: {
@@ -114,6 +114,17 @@ export default {
       if (msg) return msg;
       return `Type at least ${this.minSearchLength} characters (name or phone)...`;
     },
+    // Only display customers when actively searching! Never preload or display default customers on open.
+    displayedOptions() {
+      if (this.searchQuery && this.searchQuery.trim().length >= this.minSearchLength) {
+        return this.searchResults;
+      }
+      // If not searching, only retain the selected customer so the input displays its label
+      if (this.selectedCustomerObj) {
+        return [this.selectedCustomerObj];
+      }
+      return [];
+    },
   },
   watch: {
     value: {
@@ -122,6 +133,8 @@ export default {
         this.internalValue = newVal;
         if (newVal !== null && newVal !== "" && newVal !== undefined) {
           this.ensureSelectedOptionExists(newVal);
+        } else {
+          this.selectedCustomerObj = null;
         }
       },
     },
@@ -129,15 +142,8 @@ export default {
       immediate: true,
       handler(cust) {
         if (cust && cust.id) {
-          this.pushCustomerOption(cust);
-        }
-      },
-    },
-    initialOptions: {
-      immediate: true,
-      handler(list) {
-        if (Array.isArray(list) && list.length > 0) {
-          list.forEach(item => this.pushCustomerOption(item));
+          const formatted = this.formatCustomer(cust);
+          this.selectedCustomerObj = formatted;
         }
       },
     },
@@ -166,27 +172,16 @@ export default {
       };
     },
 
-    pushCustomerOption(cust) {
-      const formatted = this.formatCustomer(cust);
-      if (!formatted || !formatted.id) return;
-      const idx = this.options.findIndex(o => String(o.value) === String(formatted.value));
-      if (idx === -1) {
-        this.options.unshift(formatted);
-      } else {
-        this.$set(this.options, idx, formatted);
-      }
-    },
-
     ensureSelectedOptionExists(id) {
       if (!id) return;
-      const exists = this.options.some(o => String(o.value) === String(id));
-      if (!exists) {
-        if (this.initialCustomer && String(this.initialCustomer.id) === String(id)) {
-          this.pushCustomerOption(this.initialCustomer);
-          return;
-        }
-        this.fetchSelectedCustomer(id);
+      if (this.selectedCustomerObj && String(this.selectedCustomerObj.value) === String(id)) {
+        return;
       }
+      if (this.initialCustomer && String(this.initialCustomer.id) === String(id)) {
+        this.selectedCustomerObj = this.formatCustomer(this.initialCustomer);
+        return;
+      }
+      this.fetchSelectedCustomer(id);
     },
 
     fetchSelectedCustomer(id) {
@@ -199,26 +194,24 @@ export default {
           const list = response.data || [];
           if (list.length > 0) {
             const item = this.formatCustomer(list[0]);
-            this.pushCustomerOption(item);
+            this.selectedCustomerObj = item;
             if (String(this.internalValue) === String(item.value)) {
               this.$emit("selected", item);
             }
           }
         })
-        .catch(err => {
-          // Silent fallback
-        });
+        .catch(() => {});
     },
 
     onSearch(search, loading) {
       this.searchQuery = search || "";
       if (!search || search.trim().length < this.minSearchLength) {
+        this.searchResults = [];
         loading(false);
         return;
       }
 
       loading(true);
-      this.activeSearchLoading = loading;
 
       if (this.debounceTimer) {
         clearTimeout(this.debounceTimer);
@@ -241,17 +234,14 @@ export default {
         .then(response => {
           const results = (response.data || []).map(this.formatCustomer);
 
-          // Preserve selected customer so vue-select does not drop the label
-          if (this.internalValue !== null && this.internalValue !== "") {
-            const selectedOpt = this.options.find(
-              o => String(o.value) === String(this.internalValue)
-            );
-            if (selectedOpt && !results.some(r => String(r.value) === String(this.internalValue))) {
-              results.unshift(selectedOpt);
+          // Preserve currently selected customer so selection isn't lost
+          if (this.selectedCustomerObj) {
+            if (!results.some(r => String(r.value) === String(this.selectedCustomerObj.value))) {
+              results.unshift(this.selectedCustomerObj);
             }
           }
 
-          this.options = results;
+          this.searchResults = results;
           if (typeof loading === "function") loading(false);
         })
         .catch(err => {
@@ -262,11 +252,13 @@ export default {
 
     onInput(val) {
       this.internalValue = val;
-      const selectedCustomer = this.options.find(o => String(o.value) === String(val)) || null;
+      const selected = (this.displayedOptions || []).find(o => String(o.value) === String(val))
+        || (this.selectedCustomerObj && String(this.selectedCustomerObj.value) === String(val) ? this.selectedCustomerObj : null);
 
+      this.selectedCustomerObj = selected;
       this.$emit("input", val);
       this.$emit("change", val);
-      this.$emit("selected", selectedCustomer);
+      this.$emit("selected", selected);
     },
 
     onOpen() {
@@ -281,7 +273,10 @@ export default {
     addCustomer(cust) {
       if (!cust) return;
       const formatted = this.formatCustomer(cust);
-      this.pushCustomerOption(formatted);
+      this.selectedCustomerObj = formatted;
+      if (!this.searchResults.some(r => String(r.value) === String(formatted.value))) {
+        this.searchResults.unshift(formatted);
+      }
       this.internalValue = formatted.id;
       this.$emit("input", formatted.id);
       this.$emit("change", formatted.id);
@@ -294,6 +289,8 @@ export default {
 
     clear() {
       this.internalValue = null;
+      this.selectedCustomerObj = null;
+      this.searchResults = [];
       this.$emit("input", null);
       this.$emit("change", null);
       this.$emit("selected", null);
@@ -307,15 +304,63 @@ export default {
 };
 </script>
 
-<style scoped>
-.customer-search-select {
-  width: 100%;
+<style>
+/* Unscoped dropdown styling specifically for customer search dropdown */
+/* Overrides global dark-purple hover with light lavender/purple tint matching Image 2 */
+.v-select.customer-search-select .vs__dropdown-menu {
+  padding: 4px 0 !important;
+  border-radius: 6px !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08) !important;
+  max-height: 280px !important;
 }
-.customer-opt-name {
+
+.v-select.customer-search-select .vs__dropdown-menu .vs__dropdown-option {
+  padding: 8px 14px !important;
+  border-bottom: 1px solid #f6f5fb !important;
+  background-color: transparent !important;
+  color: #212529 !important;
+  cursor: pointer !important;
+  transition: background-color 0.12s ease !important;
+}
+
+.v-select.customer-search-select .vs__dropdown-menu .vs__dropdown-option:last-child {
+  border-bottom: none !important;
+}
+
+/* Light purple highlight / hover state (Matches Image 2 exactly) */
+.v-select.customer-search-select .vs__dropdown-menu .vs__dropdown-option--highlight,
+.v-select.customer-search-select .vs__dropdown-menu .vs__dropdown-option--selected,
+.v-select.customer-search-select .vs__dropdown-menu .vs__dropdown-option:hover {
+  background: #f1edfa !important;
+  background-color: #f1edfa !important;
+  color: #212529 !important;
+}
+
+.v-select.customer-search-select .vs__dropdown-menu .vs__dropdown-option .customer-opt-name {
+  color: #212529 !important;
+  font-weight: 600;
   font-size: 0.9rem;
 }
-.customer-opt-phone {
-  font-size: 0.82rem;
+
+.v-select.customer-search-select .vs__dropdown-menu .vs__dropdown-option .customer-opt-phone {
+  color: #6f42c1 !important;
+  font-weight: 500;
+  font-size: 0.85rem;
+}
+
+.v-select.customer-search-select .vs__dropdown-menu .vs__dropdown-option--highlight .customer-opt-name,
+.v-select.customer-search-select .vs__dropdown-menu .vs__dropdown-option:hover .customer-opt-name {
+  color: #212529 !important;
+}
+
+.v-select.customer-search-select .vs__dropdown-menu .vs__dropdown-option--highlight .customer-opt-phone,
+.v-select.customer-search-select .vs__dropdown-menu .vs__dropdown-option:hover .customer-opt-phone {
+  color: #6f42c1 !important;
+}
+
+.v-select.customer-search-select .vs__selected {
+  color: #212529 !important;
+  font-weight: 500;
 }
 </style>
-

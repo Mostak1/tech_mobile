@@ -1865,7 +1865,7 @@ class SalesController extends BaseController
             $warehouses = Warehouse::whereNull('deleted_at')->whereIn('id', $warehouses_id)->get(['id', 'name']);
         }
 
-        $clients = Client::whereNull('deleted_at')->limit(10)->get(['id', 'name', 'phone']);
+        $clients = [];
         $sales_agents = SalesAgent::where('deleted_at', '=', null)->get(['id', 'name']);
 
         return response()->json([

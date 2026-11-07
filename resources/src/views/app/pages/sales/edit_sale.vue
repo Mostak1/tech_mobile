@@ -48,7 +48,6 @@
                         :state="errors[0] ? false : (valid ? true : null)"
                         v-model="sale.client_id"
                         disabled
-                        :initial-options="clients"
                         :placeholder="$t('Choose_Customer')"
                       />
                       <b-form-invalid-feedback>{{ errors[0] }}</b-form-invalid-feedback>

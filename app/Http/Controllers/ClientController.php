@@ -466,7 +466,8 @@ class ClientController extends BaseController
         } elseif ($selectedId) {
             $clients = $query->where('id', $selectedId)->get();
         } else {
-            $clients = $query->orderBy('id', 'desc')->limit(10)->get();
+            // No search query and no selectedId: do not load default customers
+            $clients = collect();
         }
 
         if ($selectedId && !$clients->contains('id', $selectedId)) {

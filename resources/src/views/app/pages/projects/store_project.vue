@@ -82,7 +82,6 @@
                         v-model="project.client_id"
                         @input="Selected_Client"
                         :placeholder="$t('Choose_Customer')"
-                        :initial-options="clients"
                       />
                       <b-form-invalid-feedback>{{ errors[0] }}</b-form-invalid-feedback>
                     </b-form-group>

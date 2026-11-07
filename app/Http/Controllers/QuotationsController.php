@@ -878,7 +878,7 @@ class QuotationsController extends BaseController
             $warehouses = Warehouse::where('deleted_at', '=', null)->whereIn('id', $warehouses_id)->get(['id', 'name']);
         }
 
-        $clients = Client::where('deleted_at', '=', null)->limit(10)->get(['id', 'name', 'phone']);
+        $clients = [];
         $quotation_with_stock = Setting::where('deleted_at', '=', null)->first()->quotation_with_stock;
 
         return response()->json([
