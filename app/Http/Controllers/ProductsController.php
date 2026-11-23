@@ -2182,6 +2182,13 @@ class ProductsController extends BaseController
             $serial = ProductSerialNumber::where('serial_no', $search)->first();
         }
 
+        if ($serial) {
+            $serialService = app(\App\Services\SerialTrackingService::class);
+            if ($serialService->isSupported()) {
+                $serial = $serialService->healRepurchasedSerial($serial);
+            }
+        }
+
         if (!$serial) {
             return response()->json(['success' => false, 'message' => 'Serial number not found'], 200);
         }

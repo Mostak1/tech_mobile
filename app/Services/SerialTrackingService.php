@@ -181,12 +181,29 @@ class SerialTrackingService
                 foreach ($serials as $serialNo) {
                     $existingSerial = ProductSerialNumber::where('serial_no', $serialNo)->first();
                     if ($existingSerial && $existingSerial->status === 'sold') {
-                        $existingSerial->update([
-                            'product_id' => $productId,
-                            'variation_id' => $detail->product_variant_id,
-                            'purchase_line_id' => $detail->id,
-                        ]);
-                        continue;
+                        // Check if this serial was already sold from THIS SPECIFIC purchase
+                        // (i.e. editing an old purchase where the item was already sold to a customer)
+                        $soldFromThisPurchase = false;
+                        if ($existingSerial->purchase_line_id) {
+                            $existingLine = PurchaseDetail::find($existingSerial->purchase_line_id);
+                            if ($existingLine && (int) $existingLine->purchase_id === (int) $purchase->id) {
+                                if ($existingSerial->sold_sell_line_id) {
+                                    $soldLine = SaleDetail::find($existingSerial->sold_sell_line_id);
+                                    if ($soldLine && ($soldLine->created_at >= $existingLine->created_at)) {
+                                        $soldFromThisPurchase = true;
+                                    }
+                                }
+                            }
+                        }
+
+                        if ($soldFromThisPurchase) {
+                            $existingSerial->update([
+                                'product_id' => $productId,
+                                'variation_id' => $detail->product_variant_id,
+                                'purchase_line_id' => $detail->id,
+                            ]);
+                            continue;
+                        }
                     }
 
                     // Create or update serial number
@@ -264,6 +281,84 @@ class SerialTrackingService
     }
 
     /**
+     * If a serial was previously marked sold, but subsequently repurchased
+     * (or its purchase line is received and newer than its sold line),
+     * restore it to 'available'.
+     */
+    public function healRepurchasedSerial(?ProductSerialNumber $serial): ?ProductSerialNumber
+    {
+        if (!$serial || $serial->status !== 'sold' || !$serial->purchase_line_id) {
+            return $serial;
+        }
+
+        $purchaseLine = $serial->purchaseLine ?? PurchaseDetail::find($serial->purchase_line_id);
+        if (!$purchaseLine || !$purchaseLine->purchase || $purchaseLine->purchase->statut !== 'received') {
+            return $serial;
+        }
+
+        $isRepurchased = false;
+        if (!$serial->sold_sell_line_id) {
+            $isRepurchased = true;
+        } else {
+            $soldLine = $serial->soldSellLine ?? SaleDetail::find($serial->sold_sell_line_id);
+            if (!$soldLine) {
+                $isRepurchased = true;
+            } else {
+                $latestHistory = $serial->latestHistory;
+                if ($latestHistory && $latestHistory->type === 'purchase') {
+                    $isRepurchased = true;
+                } else {
+                    $purchaseDate = optional($purchaseLine->purchase)->date ?? $purchaseLine->date ?? null;
+                    $saleDate = optional($soldLine->sale)->date ?? $soldLine->date ?? null;
+
+                    $purchaseTime = optional($purchaseLine->purchase)->created_at ?? $purchaseLine->created_at;
+                    $saleTime = optional($soldLine->sale)->created_at ?? $soldLine->created_at;
+
+                    if ($purchaseDate && $saleDate && $purchaseDate > $saleDate) {
+                        $isRepurchased = true;
+                    } elseif ($purchaseTime && $saleTime && $purchaseTime > $saleTime) {
+                        $isRepurchased = true;
+                    } elseif ($purchaseLine->id > $soldLine->id) {
+                        $isRepurchased = true;
+                    }
+                }
+            }
+        }
+
+        if ($isRepurchased) {
+            $serial->update([
+                'status' => 'available',
+                'current_location_id' => $purchaseLine->purchase->warehouse_id,
+                'current_customer_id' => null,
+                'sold_sell_line_id' => null,
+            ]);
+
+            $userId = Auth::id() ?? $purchaseLine->purchase->user_id;
+            $historyExists = SerialNumberHistory::where('serial_number_id', $serial->id)
+                ->where('type', 'purchase')
+                ->where('reference_id', $purchaseLine->purchase_id)
+                ->exists();
+
+            if (!$historyExists) {
+                SerialNumberHistory::create([
+                    'serial_number_id' => $serial->id,
+                    'type' => 'purchase',
+                    'reference_id' => $purchaseLine->purchase_id,
+                    'from_location_id' => null,
+                    'to_location_id' => $purchaseLine->purchase->warehouse_id,
+                    'customer_id' => null,
+                    'notes' => 'Registered via Purchase: ' . $purchaseLine->purchase->Ref,
+                    'created_by' => $userId,
+                ]);
+            }
+
+            $serial->refresh();
+        }
+
+        return $serial;
+    }
+
+    /**
      * Validate sale serial inputs
      */
     public function validateSale(array $details, int $warehouseId, ?int $saleId = null): array
@@ -302,6 +397,9 @@ class SerialTrackingService
                 $serial = ProductSerialNumber::where('serial_no', $cleanNo)->first();
                 if (!$serial) {
                     $serial = ProductSerialNumber::whereRaw('LOWER(TRIM(serial_no)) = ?', [strtolower($cleanNo)])->first();
+                }
+                if ($serial) {
+                    $serial = $this->healRepurchasedSerial($serial);
                 }
                 $belongsToCurrentSale = $saleId && $serial && $serial->soldSellLine
                     && (int) $serial->soldSellLine->sale_id === (int) $saleId;
@@ -360,6 +458,7 @@ class SerialTrackingService
                     $serial = ProductSerialNumber::whereRaw('LOWER(TRIM(serial_no)) = ?', [strtolower($cleanNo)])->first();
                 }
                 if ($serial) {
+                    $serial = $this->healRepurchasedSerial($serial);
                     $serial->update([
                         'status' => 'sold',
                         'sold_sell_line_id' => $detail->id,
@@ -1090,6 +1189,15 @@ class SerialTrackingService
     {
         if (!$this->isSupported()) {
             return [];
+        }
+
+        // Heal any repurchased serials for this product
+        $soldSerials = ProductSerialNumber::where('product_id', $productId)
+            ->where('status', 'sold')
+            ->whereNotNull('purchase_line_id')
+            ->get();
+        foreach ($soldSerials as $s) {
+            $this->healRepurchasedSerial($s);
         }
 
         $query = ProductSerialNumber::where('product_id', $productId)
