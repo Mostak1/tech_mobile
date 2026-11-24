@@ -136,6 +136,29 @@ Route::get('/migrate', function () {
     }
 });
 
+Route::get('/repair-repurchased-serials', function () {
+    try {
+        \Illuminate\Support\Facades\Artisan::call('serials:repair-repurchased');
+        $rawOutput = \Illuminate\Support\Facades\Artisan::output();
+        $lines = array_values(array_filter(array_map('trim', explode("\n", $rawOutput))));
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Repurchased serial numbers scanned and repaired successfully!',
+            'output' => $lines,
+        ], 200, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    } catch (\Throwable $e) {
+        return response()->json([
+            'status' => false,
+            'message' => 'Failed to repair serial numbers: ' . $e->getMessage(),
+        ], 500, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    }
+});
+
+Route::get('/repair-serials', function () {
+    return redirect('/repair-repurchased-serials');
+});
+
 Route::get('/view-logs', function () {
     $logDir = storage_path('logs');
     $logFiles = glob($logDir . '/laravel*.log');
