@@ -287,11 +287,34 @@ class SerialTrackingService
      */
     public function healRepurchasedSerial(?ProductSerialNumber $serial): ?ProductSerialNumber
     {
-        if (!$serial || $serial->status !== 'sold' || !$serial->purchase_line_id) {
+        if (!$serial || $serial->status !== 'sold') {
             return $serial;
         }
 
-        $purchaseLine = $serial->purchaseLine ?? PurchaseDetail::find($serial->purchase_line_id);
+        $purchaseLine = null;
+        if ($serial->purchase_line_id) {
+            $purchaseLine = $serial->purchaseLine ?? PurchaseDetail::find($serial->purchase_line_id);
+        }
+
+        // Also check if there is a newer received PurchaseDetail containing this serial in imei_number
+        $cleanNo = trim((string) $serial->serial_no);
+        if ($cleanNo !== '') {
+            $newerPurchaseLine = PurchaseDetail::whereHas('purchase', function ($q) {
+                    $q->where('statut', 'received');
+                })
+                ->where(function ($q) use ($cleanNo) {
+                    $q->where('imei_number', $cleanNo)
+                      ->orWhere('imei_number', 'like', "%{$cleanNo}%");
+                })
+                ->orderBy('id', 'desc')
+                ->first();
+
+            if ($newerPurchaseLine && (!$purchaseLine || $newerPurchaseLine->id > $purchaseLine->id)) {
+                $purchaseLine = $newerPurchaseLine;
+                $serial->purchase_line_id = $purchaseLine->id;
+            }
+        }
+
         if (!$purchaseLine || !$purchaseLine->purchase || $purchaseLine->purchase->statut !== 'received') {
             return $serial;
         }

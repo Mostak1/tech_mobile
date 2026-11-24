@@ -36,14 +36,12 @@ class RepairRepurchasedSerialsCommand extends Command
             return 0;
         }
 
-        $soldSerials = ProductSerialNumber::where('status', 'sold')
-            ->whereNotNull('purchase_line_id')
-            ->get();
-
         $repairedCount = 0;
 
+        // 1. Scan all serials currently marked as 'sold'
+        $soldSerials = ProductSerialNumber::where('status', 'sold')->get();
+
         foreach ($soldSerials as $serial) {
-            $originalStatus = $serial->status;
             $serialService->healRepurchasedSerial($serial);
             $serial->refresh();
 
@@ -53,7 +51,35 @@ class RepairRepurchasedSerialsCommand extends Command
             }
         }
 
-        $this->info("Completed. Repaired {$repairedCount} of {$soldSerials->count()} scanned serials.");
+        // 2. Also scan received PurchaseDetails with imei_number to catch any past purchases
+        $receivedPurchaseLines = \App\Models\PurchaseDetail::whereHas('purchase', function ($q) {
+                $q->where('statut', 'received');
+            })
+            ->whereNotNull('imei_number')
+            ->where('imei_number', '!=', '')
+            ->get();
+
+        foreach ($receivedPurchaseLines as $pl) {
+            $serials = $serialService->parseSerials($pl->imei_number);
+            foreach ($serials as $sn) {
+                $cleanNo = trim((string) $sn);
+                if ($cleanNo === '') {
+                    continue;
+                }
+
+                $serialObj = ProductSerialNumber::where('serial_no', $cleanNo)->first();
+                if ($serialObj && $serialObj->status === 'sold') {
+                    $serialService->healRepurchasedSerial($serialObj);
+                    $serialObj->refresh();
+                    if ($serialObj->status === 'available') {
+                        $repairedCount++;
+                        $this->line("Repaired serial [{$serialObj->serial_no}] from Purchase Ref: {$pl->purchase->Ref} -> Available in warehouse #{$serialObj->current_location_id}");
+                    }
+                }
+            }
+        }
+
+        $this->info("Completed. Repaired {$repairedCount} serials.");
 
         return 0;
     }
